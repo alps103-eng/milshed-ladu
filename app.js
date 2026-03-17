@@ -6,7 +6,6 @@ let products = [];
 let currentRow = "";
 let selectedShelves = new Set();
 
-// HELPER: Removes accents/dots (e.g., ä -> a, õ -> o)
 const normalizeText = (str) => {
     return String(str)
         .normalize("NFD")
@@ -48,28 +47,25 @@ function renderProductList(query = "") {
     if (!listEl) return;
     
     listEl.innerHTML = "";
-    const cleanQuery = normalizeText(query); // Normaliseerime otsingu
+    const cleanQuery = normalizeText(query);
 
     const filtered = products.filter(p => {
         if (!cleanQuery) return true;
-        
-        // Normaliseerime kõik väljad võrdluseks
         const id = normalizeText(p['Product ID']);
         const name = normalizeText(p['Nimi']);
         const ean = normalizeText(p['EAN13']);
         const code = normalizeText(p['Tootekood']);
-        
-        return id.includes(cleanQuery) || 
-               name.includes(cleanQuery) || 
-               ean.includes(cleanQuery) || 
-               code.includes(cleanQuery);
+        return id.includes(cleanQuery) || name.includes(cleanQuery) || ean.includes(cleanQuery) || code.includes(cleanQuery);
     });
 
     filtered.slice(0, 50).forEach(p => {
         const isAssigned = p.Location && p.Location !== "";
         const div = document.createElement('div');
         div.className = `product-card p-3 rounded-xl border shadow-sm cursor-pointer ${isAssigned ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-100'}`;
-        div.onclick = () => assignProduct(p['Product ID']);
+        
+        // Updated click handler
+        div.onclick = () => handleProductClick(p);
+
         div.innerHTML = `
             <div class="flex justify-between text-[9px] mb-1 uppercase font-bold text-left">
                 <span class="text-gray-400">ID: ${p['Product ID']}</span>
@@ -86,7 +82,33 @@ function renderProductList(query = "") {
     }
 }
 
-// --- KEEP ALL OTHER FUNCTIONS (Manifest, Sync, UI, Bulk) ---
+// NEW: Logic to either Assign or Locate
+function handleProductClick(product) {
+    // Case 1: A shelf is currently open -> Assign product to this shelf
+    if (currentRow) {
+        assignProduct(product['Product ID']);
+    } 
+    // Case 2: No shelf open -> Locate the product
+    else {
+        if (product.Location && product.Location.trim() !== "") {
+            setRow(product.Location.trim());
+        } else {
+            alert(`Toode "${product['Nimi']}" ei ole veel ühelegi riiulile määratud.`);
+        }
+    }
+}
+
+async function assignProduct(id) {
+    if (!currentRow) return; // Guard
+    const idx = products.findIndex(p => String(p['Product ID']) === String(id));
+    if (idx !== -1) { 
+        products[idx].Location = currentRow.trim(); 
+        syncToCloud(products[idx]); 
+        saveAndRefresh(); 
+    }
+}
+
+// --- REST OF THE FUNCTIONS REMAIN THE SAME ---
 
 function enterManifestMode(shelfList) {
     const inputPanel = document.getElementById('inputPanel');
@@ -109,12 +131,6 @@ function enterManifestMode(shelfList) {
         container.appendChild(card);
     });
     mainArea.appendChild(container);
-}
-
-async function assignProduct(id) {
-    if (!currentRow) return alert("Vali riiul!");
-    const idx = products.findIndex(p => String(p['Product ID']) === String(id));
-    if (idx !== -1) { products[idx].Location = currentRow.trim(); syncToCloud(products[idx]); saveAndRefresh(); }
 }
 
 async function removeProduct(id) {
