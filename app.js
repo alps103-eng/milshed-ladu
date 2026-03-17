@@ -15,7 +15,7 @@ window.onload = () => {
     renderProductList();
     renderDropZone();
 
-    // NEW: Check URL for QR code deep link (e.g., ?shelf=A1)
+    // AUTO-OPEN Logic: If URL has ?shelf=...
     const urlParams = new URLSearchParams(window.location.search);
     const shelfFromUrl = urlParams.get('shelf');
     if (shelfFromUrl) {
@@ -143,8 +143,8 @@ function updateUIState() {
     const nav = document.getElementById('shelf-nav');
     qrEl.innerHTML = "";
     if (currentRow) {
-        // QR Code now contains the full link to your website with the shelf ID
-        const baseUrl = window.location.href.split('?')[0];
+        // FIX: Ensure QR contains a full URL, not just text
+        const baseUrl = window.location.origin + window.location.pathname;
         const fullUrl = `${baseUrl}?shelf=${encodeURIComponent(currentRow)}`;
         new QRCode(qrEl, { text: fullUrl, width: 64, height: 64 });
         
@@ -222,15 +222,21 @@ function printQRCode() {
     canvas.width = 350; canvas.height = 450;
     const ctx = canvas.getContext("2d");
     ctx.fillStyle = "white"; ctx.fillRect(0, 0, 350, 450);
-    ctx.fillStyle = "black"; ctx.font = "bold 30px Arial"; ctx.textAlign = "center";
-    ctx.fillText(currentRow, 175, 70);
+    
+    // BIG FONT for Shelf ID
+    ctx.fillStyle = "black"; 
+    ctx.font = "bold 60px Arial"; 
+    ctx.textAlign = "center";
+    ctx.fillText(currentRow, 175, 80);
     
     const img = document.querySelector("#qrcode img");
     if(!img) return;
-    ctx.drawImage(img, 50, 100, 250, 250);
+    ctx.drawImage(img, 45, 110, 260, 260);
     
-    ctx.font = "10px Arial"; ctx.fillStyle = "#CCC";
-    ctx.fillText("SCAN TO OPEN SHELF", 175, 380);
+    ctx.font = "bold 12px Arial"; ctx.fillStyle = "#333";
+    ctx.fillText("SCAN TO OPEN SHELF IN APP", 175, 410);
+    ctx.font = "10px Arial"; ctx.fillStyle = "#999";
+    ctx.fillText("MILSHED WAREHOUSE", 175, 430);
     
     const link = document.createElement('a');
     link.download = `Riiul_${currentRow}.png`;
