@@ -6,12 +6,21 @@ let products = [];
 let currentRow = "";
 let selectedShelves = new Set();
 
+// HELPER: Removes accents/dots (e.g., ä -> a, õ -> o)
+const normalizeText = (str) => {
+    return String(str)
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+};
+
 window.onload = () => {
     const saved = localStorage.getItem('milshed_inventory_updates');
     products = saved ? JSON.parse(saved) : (typeof productData !== 'undefined' ? productData : []);
     
     updateStats();
-    renderProductList();
+    renderProductList(""); 
     renderDropZone();
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -25,64 +34,65 @@ window.onload = () => {
     }
 
     setInterval(() => { pullFromCloud(true); }, 30000);
+
+    const searchInput = document.getElementById('productSearch');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            renderProductList(e.target.value);
+        });
+    }
 };
 
-const productListEl = document.getElementById('productList');
-const dropZone = document.getElementById('dropZone');
-const rowInput = document.getElementById('rowInput');
-const searchInput = document.getElementById('productSearch');
-
-searchInput.addEventListener('input', (e) => renderProductList(e.target.value));
-
-// IMPROVED SEARCH: Filters the WHOLE list, then displays top results
 function renderProductList(query = "") {
-    productListEl.innerHTML = "";
-    const lowerQuery = query.toLowerCase().trim();
+    const listEl = document.getElementById('productList');
+    if (!listEl) return;
+    
+    listEl.innerHTML = "";
+    const cleanQuery = normalizeText(query); // Normaliseerime otsingu
 
-    // 1. Search against the ENTIRE products array
     const filtered = products.filter(p => {
-        if (!lowerQuery) return true; // Show all if no search
+        if (!cleanQuery) return true;
         
-        const id = String(p['Product ID'] || "").toLowerCase();
-        const name = String(p['Nimi'] || "").toLowerCase();
-        const ean = String(p['EAN13'] || "").toLowerCase();
-        const code = String(p['Tootekood'] || "").toLowerCase();
+        // Normaliseerime kõik väljad võrdluseks
+        const id = normalizeText(p['Product ID']);
+        const name = normalizeText(p['Nimi']);
+        const ean = normalizeText(p['EAN13']);
+        const code = normalizeText(p['Tootekood']);
         
-        return id.includes(lowerQuery) || 
-               name.includes(lowerQuery) || 
-               ean.includes(lowerQuery) || 
-               code.includes(lowerQuery);
+        return id.includes(cleanQuery) || 
+               name.includes(cleanQuery) || 
+               ean.includes(cleanQuery) || 
+               code.includes(cleanQuery);
     });
 
-    // 2. Limit the DISPLAY ONLY (to 50 items) so the phone doesn't crash rendering 2000 items
-    const displayItems = filtered.slice(0, 50);
-
-    displayItems.forEach(p => {
+    filtered.slice(0, 50).forEach(p => {
         const isAssigned = p.Location && p.Location !== "";
         const div = document.createElement('div');
         div.className = `product-card p-3 rounded-xl border shadow-sm cursor-pointer ${isAssigned ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-100'}`;
         div.onclick = () => assignProduct(p['Product ID']);
         div.innerHTML = `
-            <div class="flex justify-between text-[9px] mb-1 uppercase font-bold">
+            <div class="flex justify-between text-[9px] mb-1 uppercase font-bold text-left">
                 <span class="text-gray-400">ID: ${p['Product ID']}</span>
                 ${isAssigned ? `<span class="bg-blue-600 text-white px-2 rounded-full">${p.Location}</span>` : ''}
             </div>
             <div class="text-xs font-bold text-gray-800 leading-tight text-left">${p['Nimi']}</div>
-            <div class="text-[8px] text-gray-400 mt-1 uppercase">Code: ${p['Tootekood']} | EAN: ${p['EAN13']}</div>
+            <div class="text-[8px] text-gray-400 mt-1 uppercase text-left">Code: ${p['Tootekood'] || 'N/A'} | EAN: ${p['EAN13'] || 'N/A'}</div>
         `;
-        productListEl.appendChild(div);
+        listEl.appendChild(div);
     });
 
-    // If no results
     if (filtered.length === 0) {
-        productListEl.innerHTML = `<div class="text-center p-10 text-gray-400 text-xs italic">No products found matching "${query}"</div>`;
+        listEl.innerHTML = `<div class="text-center py-10 text-gray-400 text-xs italic">Tulemusi ei leitud</div>`;
     }
 }
 
-// REST OF THE CODE (MANIFEST, SYNC, UI, BULK) stays the same
+// --- KEEP ALL OTHER FUNCTIONS (Manifest, Sync, UI, Bulk) ---
+
 function enterManifestMode(shelfList) {
-    document.getElementById('inputPanel').style.display = "none";
-    document.getElementById('standardShelfView').style.display = "none";
+    const inputPanel = document.getElementById('inputPanel');
+    const stdView = document.getElementById('standardShelfView');
+    if(inputPanel) inputPanel.style.display = "none";
+    if(stdView) stdView.style.display = "none";
     document.getElementById('bulkBtnHeader').style.display = "none";
     document.getElementById('clearBtn').style.display = "none";
     const nav = document.getElementById('shelf-nav');
@@ -94,15 +104,15 @@ function enterManifestMode(shelfList) {
     shelfList.forEach(name => {
         const shelfItems = products.filter(p => (p.Location || "").trim() === name.trim());
         const card = document.createElement('div');
-        card.className = "bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden";
-        card.innerHTML = `<div class="bg-slate-800 text-white p-3 font-black uppercase italic text-xs flex justify-between"><span>${name}</span><span class="opacity-50">${shelfItems.length} items</span></div><div class="p-1">${shelfItems.length > 0 ? shelfItems.map(p => `<div class="p-3 border-b last:border-0 flex justify-between text-[11px] items-center"><div class="flex flex-col"><span class="font-medium text-gray-700 truncate mr-4">${p.Nimi}</span><span class="text-[8px] text-gray-400 uppercase">${p['Tootekood']}</span></div><span class="text-gray-300 font-mono text-[9px]">ID: ${p['Product ID']}</span></div>`).join('') : '<p class="p-4 text-center text-gray-300 text-xs italic">Empty</p>'}</div>`;
+        card.className = "bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden text-left";
+        card.innerHTML = `<div class="bg-slate-800 text-white p-3 font-black uppercase italic text-xs flex justify-between"><span>${name}</span><span class="opacity-50">${shelfItems.length} items</span></div><div class="p-1">${shelfItems.length > 0 ? shelfItems.map(p => `<div class="p-3 border-b last:border-0 flex justify-between text-[11px] items-center text-left"><div class="flex flex-col"><span class="font-medium text-gray-700 truncate mr-4">${p.Nimi}</span><span class="text-[8px] text-gray-400 uppercase">${p['Tootekood']}</span></div><span class="text-gray-300 font-mono text-[9px]">ID: ${p['Product ID']}</span></div>`).join('') : '<p class="p-4 text-center text-gray-300 text-xs italic">Empty</p>'}</div>`;
         container.appendChild(card);
     });
     mainArea.appendChild(container);
 }
 
 async function assignProduct(id) {
-    if (!currentRow) return alert("Select a shelf first!");
+    if (!currentRow) return alert("Vali riiul!");
     const idx = products.findIndex(p => String(p['Product ID']) === String(id));
     if (idx !== -1) { products[idx].Location = currentRow.trim(); syncToCloud(products[idx]); saveAndRefresh(); }
 }
@@ -131,30 +141,41 @@ async function pullFromCloud(silent = false) {
 
 function saveAndRefresh() {
     localStorage.setItem('milshed_inventory_updates', JSON.stringify(products));
-    renderDropZone(); renderProductList(searchInput.value); updateStats();
+    renderDropZone(); 
+    const sInput = document.getElementById('productSearch');
+    renderProductList(sInput ? sInput.value : ""); 
+    updateStats();
 }
 
-rowInput.addEventListener('input', (e) => { currentRow = e.target.value.toUpperCase(); updateUIState(); });
-function setRow(r) { rowInput.value = r; currentRow = r; updateUIState(); }
+function setRow(r) { 
+    const rInput = document.getElementById('rowInput');
+    if(rInput) rInput.value = r; 
+    currentRow = r; 
+    updateUIState(); 
+}
 
 function updateUIState() {
     const qrEl = document.getElementById("qrcode");
     const nav = document.getElementById('shelf-nav');
+    if(!qrEl) return;
     qrEl.innerHTML = "";
     if (currentRow) {
         const fullUrl = `${window.location.origin + window.location.pathname}?shelf=${encodeURIComponent(currentRow)}`;
         new QRCode(qrEl, { text: fullUrl, width: 256, height: 256 });
         nav.classList.remove('hidden');
-        document.getElementById('nav-shelf-id').innerText = currentRow;
-    } else { nav.classList.add('hidden'); }
+        const navId = document.getElementById('nav-shelf-id');
+        if(navId) navId.innerText = currentRow;
+    } else { if(nav) nav.classList.add('hidden'); }
     renderDropZone();
 }
 
 function renderDropZone() {
+    const dz = document.getElementById('dropZone');
+    if(!dz) return;
     const active = [...new Set(products.map(p => (p.Location || "").trim()).filter(l => l !== ""))];
     const items = products.filter(p => (p.Location || "").trim() === (currentRow || "").trim());
     if (!currentRow) {
-        dropZone.innerHTML = `<div class="text-center py-6"><p class="text-[9px] font-bold text-gray-400 mb-6 uppercase tracking-widest">Active Shelves</p><div class="grid grid-cols-1 gap-3" id="shelfBtnContainer"></div></div>`;
+        dz.innerHTML = `<div class="text-center py-6"><p class="text-[9px] font-bold text-gray-400 mb-6 uppercase tracking-widest underline underline-offset-4">Aktiivsed Riiulid</p><div class="grid grid-cols-1 gap-3" id="shelfBtnContainer"></div></div>`;
         const container = document.getElementById('shelfBtnContainer');
         active.sort().forEach(name => {
             const w = document.createElement('div'); w.className = "flex gap-2 items-stretch";
@@ -164,7 +185,7 @@ function renderDropZone() {
         });
         return;
     }
-    dropZone.innerHTML = `<div class="flex justify-between items-center mb-4 border-b pb-2"><span class="font-black text-slate-700 text-xs italic">${currentRow}</span><span class="text-[10px] font-bold bg-blue-600 text-white px-2 py-0.5 rounded-full">${items.length} items</span></div><div class="space-y-2">${items.map(p => `<div class="flex justify-between items-center bg-white p-3 border rounded-xl text-[11px]"><span class="truncate font-medium text-gray-700 text-left w-full">${p.Nimi}</span><button onclick="removeProduct('${p['Product ID']}')" class="text-red-400 font-bold px-2 text-xl">✕</button></div>`).join('')}</div>`;
+    dz.innerHTML = `<div class="flex justify-between items-center mb-4 border-b pb-2"><span class="font-black text-slate-700 text-xs italic">${currentRow}</span><span class="text-[10px] font-bold bg-blue-600 text-white px-2 py-0.5 rounded-full">${items.length} items</span></div><div class="space-y-2 text-left">${items.map(p => `<div class="flex justify-between items-center bg-white p-3 border rounded-xl text-[11px] text-left"><span class="truncate font-medium text-gray-700 text-left w-full">${p.Nimi}</span><button onclick="removeProduct('${p['Product ID']}')" class="text-red-400 font-bold px-2 text-xl">✕</button></div>`).join('')}</div>`;
 }
 
 function openBulkModal() {
@@ -226,7 +247,11 @@ function printQRCode() {
     const link = document.createElement('a'); link.download = `${currentRow}.png`; link.href = canvas.toDataURL(); link.click();
 }
 
-function updateStats() { document.getElementById('stats-counter').innerText = `T: ${products.length.toLocaleString()} / A: ${products.filter(p => p.Location).length}`; }
+function updateStats() { 
+    const counter = document.getElementById('stats-counter');
+    if(counter) counter.innerText = `T: ${products.length.toLocaleString()} / A: ${products.filter(p => p.Location).length}`; 
+}
+
 function exportData() {
     const list = products.filter(p => p.Location);
     let csv = "ID,Name,Location\n";
