@@ -18,10 +18,10 @@ window.onload = () => {
     const shelfFromUrl = urlParams.get('shelf');
     const multiFromUrl = urlParams.get('multi');
 
-    if (shelfFromUrl) {
+    if (multiFromUrl) {
+        enterManifestMode(multiFromUrl.split(',').map(s => decodeURIComponent(s)));
+    } else if (shelfFromUrl) {
         setRow(decodeURIComponent(shelfFromUrl));
-    } else if (multiFromUrl) {
-        renderBulkManifest(multiFromUrl.split(',').map(s => decodeURIComponent(s)));
     }
 
     setInterval(() => { pullFromCloud(true); }, 30000);
@@ -32,296 +32,166 @@ const dropZone = document.getElementById('dropZone');
 const rowInput = document.getElementById('rowInput');
 const searchInput = document.getElementById('productSearch');
 
-// SEARCH & RENDER
-searchInput.addEventListener('input', (e) => renderProductList(e.target.value.toLowerCase()));
-
 function renderProductList(query = "") {
     productListEl.innerHTML = "";
-    const filtered = products.filter(p => {
-        const str = `${p['Nimi']} ${p['Product ID']} ${p['EAN13']} ${p['Tootekood']} ${p.Location}`.toLowerCase();
-        return str.includes(query);
-    }).slice(0, 40);
-
-    filtered.forEach(p => {
-        const isAssigned = p.Location && p.Location !== "";
+    products.filter(p => `${p['Nimi']} ${p['Product ID']} ${p['EAN13']} ${p.Location}`.toLowerCase().includes(query)).slice(0, 40).forEach(p => {
         const div = document.createElement('div');
-        div.className = `product-card p-3 rounded-xl border shadow-sm cursor-pointer ${isAssigned ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-100'}`;
+        div.className = `product-card p-3 rounded-xl border shadow-sm cursor-pointer ${p.Location ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-100'}`;
         div.onclick = () => assignProduct(p['Product ID']);
-        div.innerHTML = `
-            <div class="flex justify-between text-[9px] mb-1 uppercase font-bold">
-                <span class="text-gray-400">ID: ${p['Product ID']}</span>
-                ${isAssigned ? `<span class="bg-blue-600 text-white px-2 rounded-full">${p.Location}</span>` : ''}
-            </div>
-            <div class="text-xs font-bold text-gray-800 leading-tight text-left">${p['Nimi']}</div>
-        `;
+        div.innerHTML = `<div class="flex justify-between text-[9px] mb-1 uppercase font-bold"><span class="text-gray-400">ID: ${p['Product ID']}</span>${p.Location ? `<span class="bg-blue-600 text-white px-2 rounded-full">${p.Location}</span>` : ''}</div><div class="text-xs font-bold text-gray-800 leading-tight text-left">${p['Nimi']}</div>`;
         productListEl.appendChild(div);
     });
 }
 
-// BULK MANIFEST VIEW (For scanned Master QRs)
-function renderBulkManifest(shelfList) {
+function enterManifestMode(shelfList) {
+    document.getElementById('inputPanel').style.display = "none"; // Hide Left Panel
+    document.getElementById('standardShelfView').style.display = "none"; // Hide Top Search
+    document.getElementById('bulkBtnHeader').style.display = "none"; // Hide Bulk button
+    document.getElementById('clearBtn').style.display = "none"; // Hide Clear button
+    
     const nav = document.getElementById('shelf-nav');
-    const mainArea = document.getElementById('mainDisplayArea');
-    
     nav.classList.remove('hidden');
-    document.getElementById('nav-shelf-id').innerText = "Master Pick List";
-    document.getElementById('standardShelfView').classList.add('hidden');
-    
-    // Create the stacked list
+    document.getElementById('nav-shelf-id').innerText = "Manifest View";
+
+    const mainArea = document.getElementById('mainDisplayArea');
     const container = document.createElement('div');
-    container.className = "space-y-6 pb-20";
-    
-    shelfList.forEach(shelfName => {
-        const items = products.filter(p => (p.Location || "").trim() === shelfName.trim());
-        const shelfCard = document.createElement('div');
-        shelfCard.className = "bg-white rounded-3xl shadow-md border overflow-hidden";
-        shelfCard.innerHTML = `
-            <div class="bg-slate-800 text-white p-4 flex justify-between items-center">
-                <span class="font-black italic uppercase text-sm">${shelfName}</span>
-                <span class="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full">${items.length} items</span>
+    container.className = "space-y-4 pb-20 mt-4";
+
+    shelfList.forEach(name => {
+        const shelfItems = products.filter(p => (p.Location || "").trim() === name.trim());
+        const card = document.createElement('div');
+        card.className = "bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden";
+        card.innerHTML = `
+            <div class="bg-slate-800 text-white p-3 font-black uppercase italic text-xs flex justify-between">
+                <span>${name}</span>
+                <span class="opacity-50">${shelfItems.length} items</span>
             </div>
-            <div class="p-4 space-y-2">
-                ${items.length > 0 ? items.map(p => `
-                    <div class="flex justify-between items-center p-3 border-b last:border-0 text-[11px]">
-                        <span class="font-medium text-gray-700">${p.Nimi}</span>
-                        <span class="text-gray-400 font-mono text-[9px] shrink-0 ml-2">ID: ${p['Product ID']}</span>
+            <div class="p-1">
+                ${shelfItems.length > 0 ? shelfItems.map(p => `
+                    <div class="p-3 border-b last:border-0 flex justify-between text-[11px] items-center">
+                        <span class="font-medium text-gray-700 truncate mr-4">${p.Nimi}</span>
+                        <span class="text-gray-300 font-mono text-[9px]">ID: ${p['Product ID']}</span>
                     </div>
-                `).join('') : '<p class="text-gray-300 text-center text-xs py-4">No items assigned</p>'}
-            </div>
-        `;
-        container.appendChild(shelfCard);
+                `).join('') : '<p class="p-4 text-center text-gray-300 text-xs italic">Empty</p>'}
+            </div>`;
+        container.appendChild(card);
     });
-    
     mainArea.appendChild(container);
 }
 
-// SYNC & CLOUD
+// SYNC & DATA
 async function assignProduct(id) {
-    if (!currentRow) return alert("Select a shelf first!");
+    if (!currentRow) return alert("Select a shelf!");
     const idx = products.findIndex(p => String(p['Product ID']) === String(id));
-    if (idx !== -1) {
-        products[idx].Location = currentRow.trim();
-        syncToCloud(products[idx]);
-        saveAndRefresh();
-    }
+    if (idx !== -1) { products[idx].Location = currentRow.trim(); syncToCloud(products[idx]); saveAndRefresh(); }
 }
 
 async function removeProduct(id) {
     const idx = products.findIndex(p => String(p['Product ID']) === String(id));
-    if (idx !== -1) {
-        products[idx].Location = "";
-        syncToCloud(products[idx]);
-        saveAndRefresh();
-    }
+    if (idx !== -1) { products[idx].Location = ""; syncToCloud(products[idx]); saveAndRefresh(); }
 }
 
 async function syncToCloud(product) {
-    try {
-        await fetch(GOOGLE_SCRIPT_URL, {
-            method: 'POST',
-            mode: 'no-cors',
-            body: JSON.stringify({
-                productId: product['Product ID'],
-                tootekood: product['Tootekood'],
-                nimi: product['Nimi'],
-                location: product['Location'] || ""
-            })
-        });
-    } catch (e) { console.error("Sync Error:", e); }
+    try { await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ productId: product['Product ID'], tootekood: product['Tootekood'], nimi: product['Nimi'], location: product['Location'] || "" }) }); } catch (e) {}
 }
 
 async function pullFromCloud(silent = false) {
     try {
-        const response = await fetch(GOOGLE_SCRIPT_URL);
-        const cloudData = await response.json();
-        let hasChanges = false;
-        for (let i = 1; i < cloudData.length; i++) {
-            const [id, code, name, loc] = cloudData[i];
-            const idx = products.findIndex(p => String(p['Product ID']) === String(id));
-            const cleanLoc = (loc || "").trim();
-            if (idx !== -1 && (products[idx].Location || "").trim() !== cleanLoc) {
-                products[idx].Location = cleanLoc;
-                hasChanges = true;
-            }
+        const res = await fetch(GOOGLE_SCRIPT_URL);
+        const data = await res.json();
+        let changed = false;
+        for (let i = 1; i < data.length; i++) {
+            const idx = products.findIndex(p => String(p['Product ID']) === String(data[i][0]));
+            if (idx !== -1 && (products[idx].Location || "").trim() !== (data[i][3] || "").trim()) { products[idx].Location = data[i][3].trim(); changed = true; }
         }
-        if (hasChanges) saveAndRefresh();
-    } catch (e) { if (!silent) console.error("Pull Error:", e); }
+        if (changed) saveAndRefresh();
+    } catch (e) {}
 }
 
 function saveAndRefresh() {
     localStorage.setItem('milshed_inventory_updates', JSON.stringify(products));
-    renderDropZone();
-    renderProductList(searchInput.value.toLowerCase());
-    updateStats();
+    renderDropZone(); renderProductList(searchInput.value.toLowerCase()); updateStats();
 }
 
-// UI & SHELF MANAGEMENT
-rowInput.addEventListener('input', (e) => {
-    currentRow = e.target.value.toUpperCase();
-    updateUIState();
-});
-
-function setRow(r) {
-    rowInput.value = r;
-    currentRow = r;
-    updateUIState();
-}
+// UI
+rowInput.addEventListener('input', (e) => { currentRow = e.target.value.toUpperCase(); updateUIState(); });
+function setRow(r) { rowInput.value = r; currentRow = r; updateUIState(); }
 
 function updateUIState() {
     const qrEl = document.getElementById("qrcode");
     const nav = document.getElementById('shelf-nav');
     qrEl.innerHTML = "";
     if (currentRow) {
-        const baseUrl = window.location.origin + window.location.pathname;
-        const fullUrl = `${baseUrl}?shelf=${encodeURIComponent(currentRow)}`;
-        new QRCode(qrEl, { text: fullUrl, width: 256, height: 256, correctLevel : QRCode.CorrectLevel.M });
+        const fullUrl = `${window.location.origin + window.location.pathname}?shelf=${encodeURIComponent(currentRow)}`;
+        new QRCode(qrEl, { text: fullUrl, width: 256, height: 256 });
         nav.classList.remove('hidden');
         document.getElementById('nav-shelf-id').innerText = currentRow;
-    } else {
-        nav.classList.add('hidden');
-    }
+    } else { nav.classList.add('hidden'); }
     renderDropZone();
 }
 
 function renderDropZone() {
-    const activeRows = [...new Set(products.map(p => (p.Location || "").trim()).filter(l => l !== ""))];
+    const active = [...new Set(products.map(p => (p.Location || "").trim()).filter(l => l !== ""))];
     const items = products.filter(p => (p.Location || "").trim() === (currentRow || "").trim());
 
     if (!currentRow) {
-        dropZone.innerHTML = `
-            <div class="text-center py-6">
-                <p class="text-[10px] font-bold text-gray-400 mb-6 uppercase tracking-widest underline underline-offset-4">Riiulid</p>
-                <div class="grid grid-cols-1 gap-3" id="shelfButtonsContainer"></div>
-            </div>`;
-        const btnContainer = document.getElementById('shelfButtonsContainer');
-        activeRows.sort().forEach(rowName => {
-            const wrapper = document.createElement('div');
-            wrapper.className = "flex gap-2 items-stretch shelf-btn-wrapper";
-            const btn = document.createElement('button');
-            btn.className = "flex-1 bg-white border-2 border-blue-500 text-blue-600 p-4 rounded-2xl text-xs font-black shadow-md active:scale-95 transition-all text-left truncate";
-            btn.innerText = rowName;
-            btn.addEventListener('click', () => setRow(rowName));
-            
-            const editBtn = document.createElement('button');
-            editBtn.className = "bg-gray-100 border-2 border-gray-200 text-gray-400 px-4 rounded-2xl text-xs active:bg-blue-100";
-            editBtn.innerHTML = "✎";
-            editBtn.addEventListener('click', (e) => { e.stopPropagation(); renameShelf(rowName); });
-            
-            wrapper.appendChild(btn);
-            wrapper.appendChild(editBtn);
-            btnContainer.appendChild(wrapper);
+        dropZone.innerHTML = `<div class="text-center py-6"><p class="text-[9px] font-bold text-gray-400 mb-6 uppercase tracking-widest">Active Shelves</p><div class="grid grid-cols-1 gap-3" id="shelfBtnContainer"></div></div>`;
+        const container = document.getElementById('shelfBtnContainer');
+        active.sort().forEach(name => {
+            const w = document.createElement('div'); w.className = "flex gap-2 items-stretch";
+            const b = document.createElement('button'); b.className = "flex-1 bg-white border-2 border-blue-500 text-blue-600 p-4 rounded-2xl text-xs font-black shadow-md text-left truncate"; b.innerText = name; b.onclick = () => setRow(name);
+            const e = document.createElement('button'); e.className = "bg-gray-100 border-2 border-gray-200 text-gray-400 px-4 rounded-2xl text-xs"; e.innerText = "✎"; e.onclick = (ev) => { ev.stopPropagation(); renameShelf(name); };
+            w.appendChild(b); w.appendChild(e); container.appendChild(w);
         });
         return;
     }
 
-    dropZone.innerHTML = `
-        <div class="flex justify-between items-center mb-4 border-b pb-2">
-            <span class="font-black text-slate-700 text-xs italic truncate mr-2">${currentRow}</span>
-            <span class="text-[10px] font-bold bg-blue-600 text-white px-2 py-0.5 rounded-full shrink-0">${items.length} items</span>
-        </div>
-        <div class="space-y-2" id="shelfItemsList"></div>`;
-    
-    const listContainer = document.getElementById('shelfItemsList');
-    items.forEach(p => {
-        const itemDiv = document.createElement('div');
-        itemDiv.className = "flex justify-between items-center bg-white p-3 border rounded-xl shadow-sm text-[11px]";
-        itemDiv.innerHTML = `<span class="truncate font-medium text-gray-700 text-left w-full">${p.Nimi}</span><button class="text-red-400 font-bold px-2 text-xl">✕</button>`;
-        itemDiv.querySelector('button').addEventListener('click', () => removeProduct(p['Product ID']));
-        listContainer.appendChild(itemDiv);
-    });
+    dropZone.innerHTML = `<div class="flex justify-between items-center mb-4 border-b pb-2"><span class="font-black text-slate-700 text-xs italic">${currentRow}</span><span class="text-[10px] font-bold bg-blue-600 text-white px-2 py-0.5 rounded-full">${items.length} items</span></div><div class="space-y-2">${items.map(p => `<div class="flex justify-between items-center bg-white p-3 border rounded-xl text-[11px]"><span class="truncate font-medium text-gray-700 text-left w-full">${p.Nimi}</span><button onclick="removeProduct('${p['Product ID']}')" class="text-red-400 font-bold px-2 text-xl">✕</button></div>`).join('')}</div>`;
 }
 
-// BULK MODAL LOGIC
+// BULK
 function openBulkModal() {
-    const activeRows = [...new Set(products.map(p => (p.Location || "").trim()).filter(l => l !== ""))].sort();
-    const container = document.getElementById('bulkChecklist');
-    if (activeRows.length === 0) return alert("No active shelves found!");
-    
-    container.innerHTML = "";
-    selectedShelves.clear();
-    
-    activeRows.forEach(rowName => {
-        const item = document.createElement('div');
-        item.className = "flex items-center p-4 bg-white border-2 border-gray-100 rounded-2xl cursor-pointer transition-all active:scale-[0.98]";
-        item.innerHTML = `
-            <div class="w-6 h-6 border-2 border-gray-300 rounded-md mr-4 flex items-center justify-center checkbox-box"></div>
-            <span class="font-bold text-slate-700 text-xs">${rowName}</span>
-        `;
-        item.onclick = () => toggleBulkItem(item, rowName);
-        container.appendChild(item);
+    const active = [...new Set(products.map(p => (p.Location || "").trim()).filter(l => l !== ""))].sort();
+    const c = document.getElementById('bulkChecklist');
+    c.innerHTML = ""; selectedShelves.clear();
+    active.forEach(name => {
+        const item = document.createElement('div'); item.className = "flex items-center p-4 bg-white border-2 border-gray-100 rounded-2xl cursor-pointer transition-all active:scale-[0.98]";
+        item.innerHTML = `<div class="w-6 h-6 border-2 border-gray-300 rounded-md mr-4 flex items-center justify-center checkbox-box"></div><span class="font-bold text-slate-700 text-xs">${name}</span>`;
+        item.onclick = () => {
+            const box = item.querySelector('.checkbox-box');
+            if (selectedShelves.has(name)) { selectedShelves.delete(name); item.classList.remove('checkbox-selected'); box.innerHTML = ""; box.classList.remove('bg-purple-600', 'border-purple-600'); }
+            else { selectedShelves.add(name); item.classList.add('checkbox-selected'); box.innerHTML = "✓"; box.classList.add('bg-purple-600', 'border-purple-600', 'text-white'); }
+        };
+        c.appendChild(item);
     });
     document.getElementById('bulkModal').classList.remove('hidden');
 }
 
-function toggleBulkItem(element, rowName) {
-    const box = element.querySelector('.checkbox-box');
-    if (selectedShelves.has(rowName)) {
-        selectedShelves.delete(rowName);
-        element.classList.remove('checkbox-selected');
-        box.innerHTML = "";
-        box.classList.remove('bg-purple-600', 'border-purple-600');
-    } else {
-        selectedShelves.add(rowName);
-        element.classList.add('checkbox-selected');
-        box.innerHTML = "✓";
-        box.classList.add('bg-purple-600', 'border-purple-600', 'text-white');
-    }
-}
-
-function selectAllShelves(state) {
-    const items = document.querySelectorAll('#bulkChecklist > div');
-    items.forEach(item => {
-        const name = item.querySelector('span').innerText;
-        const currentlySelected = selectedShelves.has(name);
-        if (state && !currentlySelected) item.click();
-        if (!state && currentlySelected) item.click();
-    });
-}
-
+function selectAllShelves(state) { document.querySelectorAll('#bulkChecklist > div').forEach(i => { const n = i.querySelector('span').innerText; if (state !== selectedShelves.has(n)) i.click(); }); }
 function closeBulkModal() { document.getElementById('bulkModal').classList.add('hidden'); }
 
 function processBulkSelection() {
-    if (selectedShelves.size === 0) return alert("Select at least one shelf!");
+    if (selectedShelves.size === 0) return;
     const list = Array.from(selectedShelves);
-    const baseUrl = window.location.origin + window.location.pathname;
-    const fullUrl = `${baseUrl}?multi=${encodeURIComponent(list.join(','))}`;
-    
-    const tempDiv = document.createElement('div');
-    new QRCode(tempDiv, { text: fullUrl, width: 512, height: 512, correctLevel : QRCode.CorrectLevel.M });
-
+    const url = `${window.location.origin + window.location.pathname}?multi=${encodeURIComponent(list.join(','))}`;
+    const temp = document.createElement('div');
+    new QRCode(temp, { text: url, width: 600, height: 600 });
     setTimeout(() => {
-        const img = tempDiv.querySelector('img');
-        const canvas = document.createElement("canvas");
-        canvas.width = 600; canvas.height = 750;
-        const ctx = canvas.getContext("2d");
-        
-        ctx.fillStyle = "white"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "black"; ctx.font = "bold 40px Arial"; ctx.textAlign = "center";
-        
-        // Split text to avoid overlapping the QR
-        ctx.fillText("MASTER PICK LIST", 300, 70);
-        ctx.font = "bold 20px Arial"; ctx.fillStyle = "#666";
-        
-        // Show names if it's only a few, otherwise show count
-        const namesText = list.length < 5 ? list.join(', ') : `${list.length} Shelves Selected`;
-        ctx.fillText(namesText, 300, 110);
-        
-        ctx.drawImage(img, 50, 150, 500, 500);
-        
-        const link = document.createElement('a');
-        link.download = `MasterQR.png`;
-        link.href = canvas.toDataURL("image/png", 1.0);
-        link.click();
+        const canvas = document.createElement("canvas"); canvas.width = 600; canvas.height = 700;
+        const ctx = canvas.getContext("2d"); ctx.fillStyle = "white"; ctx.fillRect(0, 0, 600, 700);
+        ctx.fillStyle = "black"; ctx.font = "bold 60px Arial"; ctx.textAlign = "center";
+        ctx.fillText("MASTER QR", 300, 80);
+        ctx.drawImage(temp.querySelector('img'), 50, 120, 500, 500);
+        const link = document.createElement('a'); link.download = `MasterQR.png`; link.href = canvas.toDataURL(); link.click();
         closeBulkModal();
-    }, 600);
+    }, 500);
 }
 
 // UTILS
-async function renameShelf(oldName) {
-    const newName = prompt(`Rename ${oldName}:`, oldName);
-    if (!newName || newName.trim() === "" || newName === oldName) return;
-    const trimmed = newName.trim().toUpperCase();
-    products.forEach(p => { if ((p.Location || "").trim() === oldName.trim()) { p.Location = trimmed; syncToCloud(p); } });
+async function renameShelf(old) {
+    const n = prompt(`Rename ${old}:`, old); if (!n || n === old) return;
+    const trimmed = n.trim().toUpperCase();
+    products.forEach(p => { if ((p.Location || "").trim() === old.trim()) { p.Location = trimmed; syncToCloud(p); } });
     saveAndRefresh();
 }
 
@@ -332,34 +202,18 @@ function resetCurrentShelf() {
 }
 
 function printQRCode() {
-    if (!currentRow) return;
-    const canvas = document.createElement("canvas");
-    canvas.width = 400; canvas.height = 450;
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "white"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "black"; ctx.font = "bold 60px Arial"; ctx.textAlign = "center";
+    const canvas = document.createElement("canvas"); canvas.width = 400; canvas.height = 450;
+    const ctx = canvas.getContext("2d"); ctx.fillStyle = "white"; ctx.fillRect(0, 0, 400, 450);
+    ctx.fillStyle = "black"; ctx.font = "bold 70px Arial"; ctx.textAlign = "center";
     ctx.fillText(currentRow, 200, 80);
-    const img = document.querySelector("#qrcode img");
-    if(!img) return;
-    ctx.drawImage(img, 50, 120, 300, 300);
-    const link = document.createElement('a');
-    link.download = `Riiul_${currentRow}.png`;
-    link.href = canvas.toDataURL("image/png", 1.0);
-    link.click();
+    ctx.drawImage(document.querySelector("#qrcode img"), 50, 110, 300, 300);
+    const link = document.createElement('a'); link.download = `${currentRow}.png`; link.href = canvas.toDataURL(); link.click();
 }
 
-function updateStats() {
-    const assigned = products.filter(p => p.Location).length;
-    document.getElementById('stats-counter').innerText = `T: ${products.length.toLocaleString()} / A: ${assigned}`;
-}
-
+function updateStats() { document.getElementById('stats-counter').innerText = `T: ${products.length.toLocaleString()} / A: ${products.filter(p => p.Location).length}`; }
 function exportData() {
     const list = products.filter(p => p.Location);
-    let csv = "ID,Code,Name,Location\n";
-    list.forEach(p => csv += `${p['Product ID']},${p.Tootekood},"${p.Nimi.replace(/,/g, " ")}",${p.Location}\n`);
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `milshed_export.csv`;
-    a.click();
+    let csv = "ID,Name,Location\n";
+    list.forEach(p => csv += `${p['Product ID']},"${p.Nimi}",${p.Location}\n`);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = `export.csv`; a.click();
 }
