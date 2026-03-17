@@ -5,6 +5,7 @@ const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzn4EvvzN99et
 let products = [];
 let currentRow = "";
 let selectedShelves = new Set();
+let isGlobalSearch = false;
 
 const normalizeText = (str) => {
     return String(str)
@@ -42,6 +43,20 @@ window.onload = () => {
     }
 };
 
+function toggleGlobalSearch() {
+    isGlobalSearch = !isGlobalSearch;
+    const btn = document.getElementById('globalSearchBtn');
+    if (isGlobalSearch) {
+        btn.classList.add('bg-blue-600', 'text-white');
+        btn.classList.remove('bg-gray-200', 'text-gray-600');
+    } else {
+        btn.classList.remove('bg-blue-600', 'text-white');
+        btn.classList.add('bg-gray-200', 'text-gray-600');
+    }
+    const sInput = document.getElementById('productSearch');
+    renderProductList(sInput ? sInput.value : "");
+}
+
 function renderProductList(query = "") {
     const listEl = document.getElementById('productList');
     if (!listEl) return;
@@ -50,6 +65,11 @@ function renderProductList(query = "") {
     const cleanQuery = normalizeText(query);
 
     const filtered = products.filter(p => {
+        if (currentRow && !isGlobalSearch) {
+            const productLoc = (p.Location || "").trim().toUpperCase();
+            if (productLoc !== currentRow) return false;
+        }
+
         if (!cleanQuery) return true;
         const id = normalizeText(p['Product ID']);
         const name = normalizeText(p['Nimi']);
@@ -63,7 +83,6 @@ function renderProductList(query = "") {
         const div = document.createElement('div');
         div.className = `product-card p-3 rounded-xl border shadow-sm cursor-pointer ${isAssigned ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-100'}`;
         
-        // Updated click handler
         div.onclick = () => handleProductClick(p);
 
         div.innerHTML = `
@@ -78,59 +97,31 @@ function renderProductList(query = "") {
     });
 
     if (filtered.length === 0) {
-        listEl.innerHTML = `<div class="text-center py-10 text-gray-400 text-xs italic">Tulemusi ei leitud</div>`;
+        const msg = (currentRow && !isGlobalSearch) ? `Riiulil "${currentRow}" pole vastet. (Vajuta 🌐 otsimiseks)` : "Tulemusi ei leitud.";
+        listEl.innerHTML = `<div class="text-center py-10 text-gray-400 text-xs italic">${msg}</div>`;
     }
 }
 
-// NEW: Logic to either Assign or Locate
 function handleProductClick(product) {
-    // Case 1: A shelf is currently open -> Assign product to this shelf
     if (currentRow) {
         assignProduct(product['Product ID']);
-    } 
-    // Case 2: No shelf open -> Locate the product
-    else {
+    } else {
         if (product.Location && product.Location.trim() !== "") {
             setRow(product.Location.trim());
         } else {
-            alert(`Toode "${product['Nimi']}" ei ole veel ühelegi riiulile määratud.`);
+            alert(`Toode "${product['Nimi']}" pole määratud.`);
         }
     }
 }
 
 async function assignProduct(id) {
-    if (!currentRow) return; // Guard
+    if (!currentRow) return;
     const idx = products.findIndex(p => String(p['Product ID']) === String(id));
     if (idx !== -1) { 
         products[idx].Location = currentRow.trim(); 
         syncToCloud(products[idx]); 
         saveAndRefresh(); 
     }
-}
-
-// --- REST OF THE FUNCTIONS REMAIN THE SAME ---
-
-function enterManifestMode(shelfList) {
-    const inputPanel = document.getElementById('inputPanel');
-    const stdView = document.getElementById('standardShelfView');
-    if(inputPanel) inputPanel.style.display = "none";
-    if(stdView) stdView.style.display = "none";
-    document.getElementById('bulkBtnHeader').style.display = "none";
-    document.getElementById('clearBtn').style.display = "none";
-    const nav = document.getElementById('shelf-nav');
-    nav.classList.remove('hidden');
-    document.getElementById('nav-shelf-id').innerText = "Manifest View";
-    const mainArea = document.getElementById('mainDisplayArea');
-    const container = document.createElement('div');
-    container.className = "space-y-4 pb-20 mt-4";
-    shelfList.forEach(name => {
-        const shelfItems = products.filter(p => (p.Location || "").trim() === name.trim());
-        const card = document.createElement('div');
-        card.className = "bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden text-left";
-        card.innerHTML = `<div class="bg-slate-800 text-white p-3 font-black uppercase italic text-xs flex justify-between"><span>${name}</span><span class="opacity-50">${shelfItems.length} items</span></div><div class="p-1">${shelfItems.length > 0 ? shelfItems.map(p => `<div class="p-3 border-b last:border-0 flex justify-between text-[11px] items-center text-left"><div class="flex flex-col"><span class="font-medium text-gray-700 truncate mr-4">${p.Nimi}</span><span class="text-[8px] text-gray-400 uppercase">${p['Tootekood']}</span></div><span class="text-gray-300 font-mono text-[9px]">ID: ${p['Product ID']}</span></div>`).join('') : '<p class="p-4 text-center text-gray-300 text-xs italic">Empty</p>'}</div>`;
-        container.appendChild(card);
-    });
-    mainArea.appendChild(container);
 }
 
 async function removeProduct(id) {
@@ -167,6 +158,8 @@ function setRow(r) {
     const rInput = document.getElementById('rowInput');
     if(rInput) rInput.value = r; 
     currentRow = r; 
+    const sInput = document.getElementById('productSearch');
+    if (sInput) sInput.value = "";
     updateUIState(); 
 }
 
@@ -182,6 +175,7 @@ function updateUIState() {
         const navId = document.getElementById('nav-shelf-id');
         if(navId) navId.innerText = currentRow;
     } else { if(nav) nav.classList.add('hidden'); }
+    renderProductList(""); 
     renderDropZone();
 }
 
@@ -255,11 +249,11 @@ function resetCurrentShelf() {
 }
 
 function printQRCode() {
-    const canvas = document.createElement("canvas"); canvas.width = 400; canvas.height = 450;
-    const ctx = canvas.getContext("2d"); ctx.fillStyle = "white"; ctx.fillRect(0, 0, 400, 450);
+    const canvas = document.createElement("canvas"); canvas.width = 400; canvas.height = 420;
+    const ctx = canvas.getContext("2d"); ctx.fillStyle = "white"; ctx.fillRect(0, 0, 400, 420);
     ctx.fillStyle = "black"; ctx.font = "bold 70px Arial"; ctx.textAlign = "center";
     ctx.fillText(currentRow, 200, 80);
-    ctx.drawImage(document.querySelector("#qrcode img"), 50, 110, 300, 300);
+    ctx.drawImage(document.querySelector("#qrcode img"), 40, 100, 320, 320);
     const link = document.createElement('a'); link.download = `${currentRow}.png`; link.href = canvas.toDataURL(); link.click();
 }
 
@@ -273,4 +267,25 @@ function exportData() {
     let csv = "ID,Name,Location\n";
     list.forEach(p => csv += `${p['Product ID']},"${p.Nimi}",${p.Location}\n`);
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = `export.csv`; a.click();
+}
+
+function enterManifestMode(shelfList) {
+    document.getElementById('inputPanel').style.display = "none";
+    document.getElementById('standardShelfView').style.display = "none";
+    document.getElementById('bulkBtnHeader').style.display = "none";
+    document.getElementById('clearBtn').style.display = "none";
+    const nav = document.getElementById('shelf-nav');
+    nav.classList.remove('hidden');
+    document.getElementById('nav-shelf-id').innerText = "Manifest View";
+    const mainArea = document.getElementById('mainDisplayArea');
+    const container = document.createElement('div');
+    container.className = "space-y-4 pb-20 mt-4";
+    shelfList.forEach(name => {
+        const shelfItems = products.filter(p => (p.Location || "").trim() === name.trim());
+        const card = document.createElement('div');
+        card.className = "bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden text-left";
+        card.innerHTML = `<div class="bg-slate-800 text-white p-3 font-black uppercase italic text-xs flex justify-between"><span>${name}</span><span class="opacity-50">${shelfItems.length} items</span></div><div class="p-1">${shelfItems.length > 0 ? shelfItems.map(p => `<div class="p-3 border-b last:border-0 flex justify-between text-[11px] items-center text-left"><div class="flex flex-col"><span class="font-medium text-gray-700 truncate mr-4">${p.Nimi}</span><span class="text-[8px] text-gray-400 uppercase">${p['Tootekood']}</span></div><span class="text-gray-300 font-mono text-[9px]">ID: ${p['Product ID']}</span></div>`).join('') : '<p class="p-4 text-center text-gray-300 text-xs italic">Empty</p>'}</div>`;
+        container.appendChild(card);
+    });
+    mainArea.appendChild(container);
 }
