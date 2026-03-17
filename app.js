@@ -1,12 +1,10 @@
 // app.js
 
-// 1. CONFIGURATION
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzn4EvvzN99et-k-N0gqaBuN1-82SDGHwc7l7P6zd9YHqZcFhkg5tkbkO557c6GcSlnBg/exec";
 
 let products = [];
 let currentRow = "";
 
-// 2. INITIALIZE
 window.onload = () => {
     const saved = localStorage.getItem('milshed_inventory_updates');
     products = saved ? JSON.parse(saved) : (typeof productData !== 'undefined' ? productData : []);
@@ -15,15 +13,20 @@ window.onload = () => {
     renderProductList();
     renderDropZone();
 
+    // Check URL for Deep Links
     const urlParams = new URLSearchParams(window.location.search);
     const shelfFromUrl = urlParams.get('shelf');
+    const rowFromUrl = urlParams.get('row');
+
     if (shelfFromUrl) {
         setRow(decodeURIComponent(shelfFromUrl));
+    } else if (rowFromUrl) {
+        // If it's a row link, we stay on the home screen but filter the list automatically
+        searchInput.value = decodeURIComponent(rowFromUrl);
+        renderProductList(searchInput.value.toLowerCase());
     }
 
-    setInterval(() => {
-        pullFromCloud(true);
-    }, 30000);
+    setInterval(() => { pullFromCloud(true); }, 30000);
 };
 
 const productListEl = document.getElementById('productList');
@@ -31,13 +34,13 @@ const dropZone = document.getElementById('dropZone');
 const rowInput = document.getElementById('rowInput');
 const searchInput = document.getElementById('productSearch');
 
-// 3. SEARCH & RENDER
+// SEARCH & RENDER
 searchInput.addEventListener('input', (e) => renderProductList(e.target.value.toLowerCase()));
 
 function renderProductList(query = "") {
     productListEl.innerHTML = "";
     const filtered = products.filter(p => {
-        const str = `${p['Nimi']} ${p['Product ID']} ${p['EAN13']} ${p['Tootekood']}`.toLowerCase();
+        const str = `${p['Nimi']} ${p['Product ID']} ${p['EAN13']} ${p['Tootekood']} ${p.Location}`.toLowerCase();
         return str.includes(query);
     }).slice(0, 40);
 
@@ -57,7 +60,7 @@ function renderProductList(query = "") {
     });
 }
 
-// 4. CLOUD SYNC LOGIC
+// CLOUD & SYNC
 async function assignProduct(id) {
     if (!currentRow) return alert("Vali esmalt riiul!");
     const idx = products.findIndex(p => String(p['Product ID']) === String(id));
@@ -130,7 +133,7 @@ function saveAndRefresh() {
     updateStats();
 }
 
-// 5. UI MANAGEMENT
+// UI MANAGEMENT
 function setRow(r) {
     rowInput.value = r;
     currentRow = r;
@@ -144,14 +147,7 @@ function updateUIState() {
     if (currentRow) {
         const baseUrl = window.location.origin + window.location.pathname;
         const fullUrl = `${baseUrl}?shelf=${encodeURIComponent(currentRow)}`;
-        
-        new QRCode(qrEl, { 
-            text: fullUrl, 
-            width: 1024, 
-            height: 1024,
-            correctLevel : QRCode.CorrectLevel.H 
-        });
-        
+        new QRCode(qrEl, { text: fullUrl, width: 1024, height: 1024, correctLevel : QRCode.CorrectLevel.H });
         nav.classList.remove('hidden');
         document.getElementById('nav-shelf-id').innerText = currentRow;
     } else {
@@ -219,31 +215,46 @@ function resetCurrentShelf() {
     }
 }
 
-// 6. UTILS
+// BULK QR LOGIC
+function generateBulkQR() {
+    const prefix = prompt("Sisesta rea eesliide (näiteks 'AA-01'):").toUpperCase();
+    if (!prefix) return;
+
+    const baseUrl = window.location.origin + window.location.pathname;
+    const fullUrl = `${baseUrl}?row=${encodeURIComponent(prefix)}`;
+    
+    const tempDiv = document.createElement('div');
+    new QRCode(tempDiv, { text: fullUrl, width: 1024, height: 1024, correctLevel : QRCode.CorrectLevel.H });
+
+    setTimeout(() => {
+        const img = tempDiv.querySelector('img');
+        const canvas = document.createElement("canvas");
+        canvas.width = 400; canvas.height = 420;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "white"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "black"; ctx.font = "bold 50px Arial"; ctx.textAlign = "center";
+        ctx.fillText("RIDA: " + prefix, 200, 85);
+        ctx.drawImage(img, 40, 100, 320, 320);
+        
+        const link = document.createElement('a');
+        link.download = `Row_${prefix}.png`;
+        link.href = canvas.toDataURL("image/png", 1.0);
+        link.click();
+    }, 500);
+}
+
+// UTILS
 function printQRCode() {
     if (!currentRow) return;
     const canvas = document.createElement("canvas");
-    canvas.width = 400; 
-    canvas.height = 420; // Slightly shorter to remove footer space
+    canvas.width = 400; canvas.height = 420;
     const ctx = canvas.getContext("2d");
-    
-    // Clean White Background
-    ctx.fillStyle = "white"; 
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    // Bold Shelf ID
-    ctx.fillStyle = "black"; 
-    ctx.font = "bold 70px Arial"; 
-    ctx.textAlign = "center";
+    ctx.fillStyle = "white"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "black"; ctx.font = "bold 70px Arial"; ctx.textAlign = "center";
     ctx.fillText(currentRow, 200, 85);
-    
-    // Plain QR Code
     const img = document.querySelector("#qrcode img");
     if(!img) return;
-    
-    // Drawn centered with no text below it
     ctx.drawImage(img, 40, 100, 320, 320);
-    
     const link = document.createElement('a');
     link.download = `Riiul_${currentRow}.png`;
     link.href = canvas.toDataURL("image/png", 1.0);

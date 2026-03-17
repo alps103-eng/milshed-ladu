@@ -24,17 +24,21 @@
     <header class="bg-slate-900 text-white p-3 shadow-xl flex justify-between items-center z-30 shrink-0">
         <div class="flex items-center gap-2">
             <div class="bg-blue-600 px-2 py-1 rounded font-bold text-lg">M</div>
-            <h1 class="text-xs font-bold leading-tight hidden sm:block uppercase tracking-widest">Milshed Ladu</h1>
+            <h1 class="text-xs font-bold leading-tight hidden lg:block uppercase tracking-widest">Milshed Ladu</h1>
         </div>
         
-        <div class="flex items-center gap-2 sm:gap-3">
-            <div id="stats-counter" class="text-[10px] font-mono text-green-400">T: 0 / A: 0</div>
+        <div class="flex items-center gap-2">
+            <div id="stats-counter" class="text-[9px] font-mono text-green-400 mr-1">T: 0 / A: 0</div>
             
-            <button onclick="pullFromCloud()" class="bg-green-600 text-white px-3 py-1.5 rounded-full text-[10px] font-bold shadow-lg active:bg-green-700 transition-colors uppercase">
-                Sync All
+            <button onclick="pullFromCloud()" class="bg-green-600 text-white px-2 py-1.5 rounded-full text-[10px] font-bold shadow-lg active:bg-green-700 uppercase">
+                Sync
             </button>
             
-            <button onclick="exportData()" class="bg-blue-600 text-white px-3 py-1.5 rounded-full text-[10px] font-bold shadow-lg active:bg-blue-800 transition-colors uppercase">
+            <button onclick="generateBulkQR()" class="bg-purple-600 text-white px-2 py-1.5 rounded-full text-[10px] font-bold shadow-lg active:bg-purple-700 uppercase">
+                Bulk
+            </button>
+            
+            <button onclick="exportData()" class="bg-blue-600 text-white px-2 py-1.5 rounded-full text-[10px] font-bold shadow-lg active:bg-blue-800 uppercase">
                 Export
             </button>
         </div>
@@ -61,7 +65,7 @@
                         Clear Shelf
                     </button>
                 </div>
-                <span id="nav-shelf-id" class="font-black text-slate-800 uppercase text-sm"></span>
+                <span id="nav-shelf-id" class="font-black text-slate-800 uppercase text-sm truncate max-w-[150px]"></span>
             </div>
 
             <div class="flex-1 overflow-y-auto p-4">
