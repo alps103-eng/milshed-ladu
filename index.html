@@ -12,11 +12,14 @@
         .product-card:active { transform: scale(0.96); opacity: 0.8; }
         #productList, #dropZone { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
         .checkbox-selected { border-color: #9333ea !important; background-color: #faf5ff !important; }
+        
+        /* Fixed QR Container */
+        #qrcode img { display: block; margin: 0 auto; max-width: 100%; height: auto; }
 
         @media (max-width: 768px) {
             .main-container { flex-direction: column; }
-            .side-panel { width: 100% !important; height: 40vh; min-height: 40vh; border-right: none; }
-            .shelf-panel { width: 100% !important; height: 60vh; min-height: 60vh; }
+            .side-panel { width: 100% !important; height: 40vh; border-right: none; }
+            .shelf-panel { width: 100% !important; height: 60vh; }
         }
     </style>
 </head>
@@ -30,9 +33,9 @@
         
         <div class="flex items-center gap-2">
             <div id="stats-counter" class="text-[9px] font-mono text-green-400 mr-1">T: 0 / A: 0</div>
-            <button onclick="pullFromCloud()" class="bg-green-600 text-white px-2 py-1.5 rounded-full text-[10px] font-bold shadow-lg active:bg-green-700 uppercase tracking-tighter">Sync</button>
-            <button onclick="openBulkModal()" class="bg-purple-600 text-white px-2 py-1.5 rounded-full text-[10px] font-bold shadow-lg active:bg-purple-700 uppercase tracking-tighter">Bulk</button>
-            <button onclick="exportData()" class="bg-blue-600 text-white px-2 py-1.5 rounded-full text-[10px] font-bold shadow-lg active:bg-blue-800 uppercase tracking-tighter">Export</button>
+            <button onclick="pullFromCloud()" class="bg-green-600 text-white px-2 py-1.5 rounded-full text-[10px] font-bold shadow-lg active:bg-green-700 uppercase">Sync</button>
+            <button onclick="openBulkModal()" class="bg-purple-600 text-white px-2 py-1.5 rounded-full text-[10px] font-bold shadow-lg active:bg-purple-700 uppercase">Bulk</button>
+            <button onclick="exportData()" class="bg-blue-600 text-white px-2 py-1.5 rounded-full text-[10px] font-bold shadow-lg active:bg-blue-800 uppercase">Export</button>
         </div>
     </header>
 
@@ -50,10 +53,10 @@
         <section class="shelf-panel flex-1 bg-slate-50 flex flex-col overflow-hidden">
             <div id="shelf-nav" class="bg-white border-b p-3 flex justify-between items-center hidden shadow-sm">
                 <div class="flex items-center gap-4">
-                    <button onclick="setRow('')" class="flex items-center gap-1 text-blue-600 font-bold text-sm">
-                        ← <span class="underline">Back</span>
+                    <button onclick="window.location.href=window.location.pathname" class="flex items-center gap-1 text-blue-600 font-bold text-sm">
+                        ← <span class="underline">Back to All</span>
                     </button>
-                    <button onclick="resetCurrentShelf()" class="text-[10px] font-bold text-red-500 uppercase tracking-tighter border border-red-100 px-2 py-1 rounded active:bg-red-100">
+                    <button onclick="resetCurrentShelf()" class="text-[10px] font-bold text-red-500 uppercase tracking-tighter border border-red-100 px-2 py-1 rounded">
                         Clear
                     </button>
                 </div>
@@ -61,17 +64,17 @@
             </div>
 
             <div class="flex-1 overflow-y-auto p-4">
-                <div class="max-w-2xl mx-auto space-y-4">
-                    <div class="bg-white p-5 rounded-3xl shadow-sm border border-gray-200">
-                        <div class="flex justify-between items-center mb-6">
+                <div class="max-w-2xl mx-auto space-y-4" id="mainDisplayArea">
+                    <div id="standardShelfView" class="bg-white p-5 rounded-3xl shadow-sm border border-gray-200">
+                        <div class="flex justify-between items-start mb-6">
                             <div class="flex-1 mr-4 text-left">
                                 <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Active Shelf</label>
                                 <input type="text" id="rowInput" placeholder="E.G. A1" 
                                     class="text-2xl font-black text-slate-800 w-full p-1 border-b-2 border-blue-100 focus:border-blue-500 outline-none uppercase">
                             </div>
-                            <div class="flex flex-col items-center">
-                                <div id="qrcode" class="w-16 h-16 flex items-center justify-center border rounded bg-gray-50 overflow-hidden"></div>
-                                <button onclick="printQRCode()" class="text-[9px] font-bold text-blue-500 mt-1 uppercase tracking-tighter">Save PNG</button>
+                            <div class="flex flex-col items-center shrink-0">
+                                <div id="qrcode" class="w-20 h-20 border rounded bg-gray-50 p-1 flex items-center justify-center"></div>
+                                <button onclick="printQRCode()" class="text-[9px] font-bold text-blue-500 mt-2 uppercase tracking-tighter">Save PNG</button>
                             </div>
                         </div>
                         <div id="dropZone" class="min-h-[200px] border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50 p-4"></div>
@@ -96,7 +99,7 @@
             </div>
             <div id="bulkChecklist" class="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50"></div>
             <div class="p-5 border-t bg-white rounded-b-3xl">
-                <button onclick="processBulkSelection()" class="w-full bg-purple-600 text-white py-4 rounded-2xl font-bold shadow-lg active:scale-95 transition-all uppercase tracking-widest text-sm">
+                <button onclick="processBulkSelection()" class="w-full bg-purple-600 text-white py-4 rounded-2xl font-bold shadow-lg uppercase tracking-widest text-sm">
                     Generate Master QR
                 </button>
             </div>
