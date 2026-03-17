@@ -15,7 +15,6 @@ window.onload = () => {
     renderProductList();
     renderDropZone();
 
-    // AUTO-OPEN Logic: If URL has ?shelf=...
     const urlParams = new URLSearchParams(window.location.search);
     const shelfFromUrl = urlParams.get('shelf');
     if (shelfFromUrl) {
@@ -143,10 +142,16 @@ function updateUIState() {
     const nav = document.getElementById('shelf-nav');
     qrEl.innerHTML = "";
     if (currentRow) {
-        // FIX: Ensure QR contains a full URL, not just text
         const baseUrl = window.location.origin + window.location.pathname;
         const fullUrl = `${baseUrl}?shelf=${encodeURIComponent(currentRow)}`;
-        new QRCode(qrEl, { text: fullUrl, width: 64, height: 64 });
+        
+        // HIGHER QUALITY: Increased width/height to 1024 for crystal clear scanning
+        new QRCode(qrEl, { 
+            text: fullUrl, 
+            width: 1024, 
+            height: 1024,
+            correctLevel : QRCode.CorrectLevel.H 
+        });
         
         nav.classList.remove('hidden');
         document.getElementById('nav-shelf-id').innerText = currentRow;
@@ -219,28 +224,30 @@ function resetCurrentShelf() {
 function printQRCode() {
     if (!currentRow) return;
     const canvas = document.createElement("canvas");
-    canvas.width = 350; canvas.height = 450;
+    canvas.width = 400; 
+    canvas.height = 450;
     const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "white"; ctx.fillRect(0, 0, 350, 450);
     
-    // BIG FONT for Shelf ID
+    // Background
+    ctx.fillStyle = "white"; 
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Shelf ID Header
     ctx.fillStyle = "black"; 
-    ctx.font = "bold 60px Arial"; 
+    ctx.font = "bold 65px Arial"; 
     ctx.textAlign = "center";
-    ctx.fillText(currentRow, 175, 80);
+    ctx.fillText(currentRow, 200, 85);
     
+    // QR Code (Hidden on page, but used here)
     const img = document.querySelector("#qrcode img");
     if(!img) return;
-    ctx.drawImage(img, 45, 110, 260, 260);
     
-    ctx.font = "bold 12px Arial"; ctx.fillStyle = "#333";
-    ctx.fillText("SCAN TO OPEN SHELF IN APP", 175, 410);
-    ctx.font = "10px Arial"; ctx.fillStyle = "#999";
-    ctx.fillText("MILSHED WAREHOUSE", 175, 430);
+    // Draw the image onto the high-res canvas
+    ctx.drawImage(img, 40, 110, 320, 320);
     
     const link = document.createElement('a');
     link.download = `Riiul_${currentRow}.png`;
-    link.href = canvas.toDataURL();
+    link.href = canvas.toDataURL("image/png", 1.0);
     link.click();
 }
 
