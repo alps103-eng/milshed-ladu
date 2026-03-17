@@ -4,6 +4,7 @@ const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzn4EvvzN99et
 
 let products = [];
 let currentRow = "";
+let selectedShelves = new Set();
 
 window.onload = () => {
     const saved = localStorage.getItem('milshed_inventory_updates');
@@ -13,17 +14,17 @@ window.onload = () => {
     renderProductList();
     renderDropZone();
 
-    // Check URL for Deep Links
     const urlParams = new URLSearchParams(window.location.search);
     const shelfFromUrl = urlParams.get('shelf');
-    const rowFromUrl = urlParams.get('row');
+    const multiFromUrl = urlParams.get('multi');
 
     if (shelfFromUrl) {
         setRow(decodeURIComponent(shelfFromUrl));
-    } else if (rowFromUrl) {
-        // If it's a row link, we stay on the home screen but filter the list automatically
-        searchInput.value = decodeURIComponent(rowFromUrl);
-        renderProductList(searchInput.value.toLowerCase());
+    } else if (multiFromUrl) {
+        // Multi-link logic: filter main view to only show specific shelves
+        const list = multiFromUrl.split(',').map(s => decodeURIComponent(s));
+        setRow(""); // Force home view
+        setTimeout(() => filterHomeButtons(list), 200);
     }
 
     setInterval(() => { pullFromCloud(true); }, 30000);
@@ -54,13 +55,13 @@ function renderProductList(query = "") {
                 <span class="text-gray-400">ID: ${p['Product ID']}</span>
                 ${isAssigned ? `<span class="bg-blue-600 text-white px-2 rounded-full">${p.Location}</span>` : ''}
             </div>
-            <div class="text-xs font-bold text-gray-800 leading-tight">${p['Nimi']}</div>
+            <div class="text-xs font-bold text-gray-800 leading-tight text-left">${p['Nimi']}</div>
         `;
         productListEl.appendChild(div);
     });
 }
 
-// CLOUD & SYNC
+// SYNC & CLOUD
 async function assignProduct(id) {
     if (!currentRow) return alert("Vali esmalt riiul!");
     const idx = products.findIndex(p => String(p['Product ID']) === String(id));
@@ -78,19 +79,6 @@ async function removeProduct(id) {
         syncToCloud(products[idx]);
         saveAndRefresh();
     }
-}
-
-async function renameShelf(oldName) {
-    const newName = prompt(`Muuda riiuli nime:`, oldName);
-    if (!newName || newName.trim() === "" || newName === oldName) return;
-    const trimmedNewName = newName.trim().toUpperCase();
-    products.forEach(p => {
-        if ((p.Location || "").trim() === oldName.trim()) {
-            p.Location = trimmedNewName;
-            syncToCloud(p);
-        }
-    });
-    saveAndRefresh();
 }
 
 async function syncToCloud(product) {
@@ -133,7 +121,12 @@ function saveAndRefresh() {
     updateStats();
 }
 
-// UI MANAGEMENT
+// UI & SHELF MANAGEMENT
+rowInput.addEventListener('input', (e) => {
+    currentRow = e.target.value.toUpperCase();
+    updateUIState();
+});
+
 function setRow(r) {
     rowInput.value = r;
     currentRow = r;
@@ -169,13 +162,13 @@ function renderDropZone() {
         const btnContainer = document.getElementById('shelfButtonsContainer');
         activeRows.sort().forEach(rowName => {
             const wrapper = document.createElement('div');
-            wrapper.className = "flex gap-2 items-stretch";
+            wrapper.className = "flex gap-2 items-stretch shelf-btn-wrapper";
             const btn = document.createElement('button');
             btn.className = "flex-1 bg-white border-2 border-blue-500 text-blue-600 p-4 rounded-2xl text-xs font-black shadow-md active:scale-95 transition-all text-left truncate";
             btn.innerText = rowName;
             btn.addEventListener('click', () => setRow(rowName));
             const editBtn = document.createElement('button');
-            editBtn.className = "bg-gray-100 border-2 border-gray-200 text-gray-400 px-4 rounded-2xl text-xs hover:bg-blue-50 hover:text-blue-500 transition-colors";
+            editBtn.className = "bg-gray-100 border-2 border-gray-200 text-gray-400 px-4 rounded-2xl text-xs active:bg-blue-100 active:text-blue-600";
             editBtn.innerHTML = "✎";
             editBtn.addEventListener('click', (e) => { e.stopPropagation(); renameShelf(rowName); });
             wrapper.appendChild(btn);
@@ -187,7 +180,7 @@ function renderDropZone() {
 
     dropZone.innerHTML = `
         <div class="flex justify-between items-center mb-4 border-b pb-2">
-            <span class="font-black text-slate-700 text-xs italic truncate mr-2">${currentRow}</span>
+            <span class="font-black text-slate-700 text-xs italic truncate mr-2 text-left">${currentRow}</span>
             <span class="text-[10px] font-bold bg-blue-600 text-white px-2 py-0.5 rounded-full shrink-0">${items.length} toodet</span>
         </div>
         <div class="space-y-2" id="shelfItemsList"></div>`;
@@ -195,33 +188,74 @@ function renderDropZone() {
     items.forEach(p => {
         const itemDiv = document.createElement('div');
         itemDiv.className = "flex justify-between items-center bg-white p-3 border rounded-xl shadow-sm text-[11px]";
-        itemDiv.innerHTML = `<span class="truncate font-medium text-gray-700">${p.Nimi}</span><button class="text-red-400 font-bold px-2 text-xl">✕</button>`;
+        itemDiv.innerHTML = `<span class="truncate font-medium text-gray-700 text-left w-full">${p.Nimi}</span><button class="text-red-400 font-bold px-2 text-xl">✕</button>`;
         itemDiv.querySelector('button').addEventListener('click', () => removeProduct(p['Product ID']));
         listContainer.appendChild(itemDiv);
     });
 }
 
-function resetCurrentShelf() {
-    if (!currentRow) return;
-    const count = products.filter(p => (p.Location || "").trim() === (currentRow || "").trim()).length;
-    if (confirm(`Tühjenda ${currentRow} (${count} toodet)?`)) {
-        products.forEach(p => {
-            if ((p.Location || "").trim() === (currentRow || "").trim()) {
-                p.Location = "";
-                syncToCloud(p);
-            }
-        });
-        saveAndRefresh();
+function filterHomeButtons(allowedList) {
+    const wrappers = document.querySelectorAll('.shelf-btn-wrapper');
+    wrappers.forEach(w => {
+        const name = w.querySelector('button').innerText;
+        if (!allowedList.includes(name)) w.style.display = "none";
+    });
+}
+
+// BULK MODAL LOGIC
+function openBulkModal() {
+    const activeRows = [...new Set(products.map(p => (p.Location || "").trim()).filter(l => l !== ""))].sort();
+    const container = document.getElementById('bulkChecklist');
+    if (activeRows.length === 0) return alert("Riiuleid ei leitud!");
+    
+    container.innerHTML = "";
+    selectedShelves.clear();
+    
+    activeRows.forEach(rowName => {
+        const item = document.createElement('div');
+        item.className = "flex items-center p-4 bg-white border-2 border-gray-100 rounded-2xl cursor-pointer transition-all active:scale-[0.98]";
+        item.innerHTML = `
+            <div class="w-6 h-6 border-2 border-gray-300 rounded-md mr-4 flex items-center justify-center checkbox-box"></div>
+            <span class="font-bold text-slate-700">${rowName}</span>
+        `;
+        item.onclick = () => toggleBulkItem(item, rowName);
+        container.appendChild(item);
+    });
+    document.getElementById('bulkModal').classList.remove('hidden');
+}
+
+function toggleBulkItem(element, rowName) {
+    const box = element.querySelector('.checkbox-box');
+    if (selectedShelves.has(rowName)) {
+        selectedShelves.delete(rowName);
+        element.classList.remove('checkbox-selected');
+        box.innerHTML = "";
+        box.classList.remove('bg-purple-600', 'border-purple-600');
+    } else {
+        selectedShelves.add(rowName);
+        element.classList.add('checkbox-selected');
+        box.innerHTML = "✓";
+        box.classList.add('bg-purple-600', 'border-purple-600', 'text-white');
     }
 }
 
-// BULK QR LOGIC
-function generateBulkQR() {
-    const prefix = prompt("Sisesta rea eesliide (näiteks 'AA-01'):").toUpperCase();
-    if (!prefix) return;
+function selectAllShelves(state) {
+    const items = document.querySelectorAll('#bulkChecklist > div');
+    items.forEach(item => {
+        const name = item.querySelector('span').innerText;
+        const currentlySelected = selectedShelves.has(name);
+        if (state && !currentlySelected) item.click();
+        if (!state && currentlySelected) item.click();
+    });
+}
 
+function closeBulkModal() { document.getElementById('bulkModal').classList.add('hidden'); }
+
+function processBulkSelection() {
+    if (selectedShelves.size === 0) return alert("Vali vähemalt üks riiul!");
+    const list = Array.from(selectedShelves);
     const baseUrl = window.location.origin + window.location.pathname;
-    const fullUrl = `${baseUrl}?row=${encodeURIComponent(prefix)}`;
+    const fullUrl = `${baseUrl}?multi=${encodeURIComponent(list.join(','))}`;
     
     const tempDiv = document.createElement('div');
     new QRCode(tempDiv, { text: fullUrl, width: 1024, height: 1024, correctLevel : QRCode.CorrectLevel.H });
@@ -232,18 +266,35 @@ function generateBulkQR() {
         canvas.width = 400; canvas.height = 420;
         const ctx = canvas.getContext("2d");
         ctx.fillStyle = "white"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "black"; ctx.font = "bold 50px Arial"; ctx.textAlign = "center";
-        ctx.fillText("RIDA: " + prefix, 200, 85);
-        ctx.drawImage(img, 40, 100, 320, 320);
+        ctx.fillStyle = "black"; ctx.font = "bold 40px Arial"; ctx.textAlign = "center";
+        ctx.fillText("MASTER QR", 200, 70);
+        ctx.font = "bold 14px Arial"; ctx.fillStyle = "#666";
+        ctx.fillText(`${list.length} Riiulit komplektis`, 200, 95);
+        ctx.drawImage(img, 40, 110, 320, 320);
         
         const link = document.createElement('a');
-        link.download = `Row_${prefix}.png`;
+        link.download = `MasterQR_${list.length}_riiulit.png`;
         link.href = canvas.toDataURL("image/png", 1.0);
         link.click();
-    }, 500);
+        closeBulkModal();
+    }, 600);
 }
 
 // UTILS
+async function renameShelf(oldName) {
+    const newName = prompt(`Uus nimi riiulile ${oldName}:`, oldName);
+    if (!newName || newName.trim() === "" || newName === oldName) return;
+    const trimmed = newName.trim().toUpperCase();
+    products.forEach(p => { if ((p.Location || "").trim() === oldName.trim()) { p.Location = trimmed; syncToCloud(p); } });
+    saveAndRefresh();
+}
+
+function resetCurrentShelf() {
+    if (!currentRow || !confirm(`Tühjenda riiul ${currentRow}?`)) return;
+    products.forEach(p => { if ((p.Location || "").trim() === currentRow.trim()) { p.Location = ""; syncToCloud(p); } });
+    saveAndRefresh();
+}
+
 function printQRCode() {
     if (!currentRow) return;
     const canvas = document.createElement("canvas");
@@ -254,7 +305,7 @@ function printQRCode() {
     ctx.fillText(currentRow, 200, 85);
     const img = document.querySelector("#qrcode img");
     if(!img) return;
-    ctx.drawImage(img, 40, 100, 320, 320);
+    ctx.drawImage(img, 40, 110, 320, 320);
     const link = document.createElement('a');
     link.download = `Riiul_${currentRow}.png`;
     link.href = canvas.toDataURL("image/png", 1.0);
@@ -268,11 +319,11 @@ function updateStats() {
 
 function exportData() {
     const list = products.filter(p => p.Location);
-    let csv = "Product ID,Tootekood,Nimi,Location\n";
+    let csv = "ID,Code,Name,Location\n";
     list.forEach(p => csv += `${p['Product ID']},${p.Tootekood},"${p.Nimi.replace(/,/g, " ")}",${p.Location}\n`);
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `milshed_export.csv`;
+    a.download = `ladu_export.csv`;
     a.click();
 }
