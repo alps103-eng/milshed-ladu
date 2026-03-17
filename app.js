@@ -32,12 +32,17 @@ const dropZone = document.getElementById('dropZone');
 const rowInput = document.getElementById('rowInput');
 const searchInput = document.getElementById('productSearch');
 
-// UPDATED SEARCH LOGIC: ID, Name, EAN, or Product Code
+searchInput.addEventListener('input', (e) => renderProductList(e.target.value));
+
+// IMPROVED SEARCH: Filters the WHOLE list, then displays top results
 function renderProductList(query = "") {
     productListEl.innerHTML = "";
     const lowerQuery = query.toLowerCase().trim();
 
+    // 1. Search against the ENTIRE products array
     const filtered = products.filter(p => {
+        if (!lowerQuery) return true; // Show all if no search
+        
         const id = String(p['Product ID'] || "").toLowerCase();
         const name = String(p['Nimi'] || "").toLowerCase();
         const ean = String(p['EAN13'] || "").toLowerCase();
@@ -49,7 +54,10 @@ function renderProductList(query = "") {
                code.includes(lowerQuery);
     });
 
-    filtered.slice(0, 40).forEach(p => {
+    // 2. Limit the DISPLAY ONLY (to 50 items) so the phone doesn't crash rendering 2000 items
+    const displayItems = filtered.slice(0, 50);
+
+    displayItems.forEach(p => {
         const isAssigned = p.Location && p.Location !== "";
         const div = document.createElement('div');
         div.className = `product-card p-3 rounded-xl border shadow-sm cursor-pointer ${isAssigned ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-100'}`;
@@ -64,50 +72,37 @@ function renderProductList(query = "") {
         `;
         productListEl.appendChild(div);
     });
+
+    // If no results
+    if (filtered.length === 0) {
+        productListEl.innerHTML = `<div class="text-center p-10 text-gray-400 text-xs italic">No products found matching "${query}"</div>`;
+    }
 }
 
+// REST OF THE CODE (MANIFEST, SYNC, UI, BULK) stays the same
 function enterManifestMode(shelfList) {
     document.getElementById('inputPanel').style.display = "none";
     document.getElementById('standardShelfView').style.display = "none";
     document.getElementById('bulkBtnHeader').style.display = "none";
     document.getElementById('clearBtn').style.display = "none";
-    
     const nav = document.getElementById('shelf-nav');
     nav.classList.remove('hidden');
     document.getElementById('nav-shelf-id').innerText = "Manifest View";
-
     const mainArea = document.getElementById('mainDisplayArea');
     const container = document.createElement('div');
     container.className = "space-y-4 pb-20 mt-4";
-
     shelfList.forEach(name => {
         const shelfItems = products.filter(p => (p.Location || "").trim() === name.trim());
         const card = document.createElement('div');
         card.className = "bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden";
-        card.innerHTML = `
-            <div class="bg-slate-800 text-white p-3 font-black uppercase italic text-xs flex justify-between">
-                <span>${name}</span>
-                <span class="opacity-50">${shelfItems.length} items</span>
-            </div>
-            <div class="p-1">
-                ${shelfItems.length > 0 ? shelfItems.map(p => `
-                    <div class="p-3 border-b last:border-0 flex justify-between text-[11px] items-center">
-                        <div class="flex flex-col">
-                            <span class="font-medium text-gray-700 truncate mr-4">${p.Nimi}</span>
-                            <span class="text-[8px] text-gray-400 uppercase">${p['Tootekood']}</span>
-                        </div>
-                        <span class="text-gray-300 font-mono text-[9px]">ID: ${p['Product ID']}</span>
-                    </div>
-                `).join('') : '<p class="p-4 text-center text-gray-300 text-xs italic">Empty</p>'}
-            </div>`;
+        card.innerHTML = `<div class="bg-slate-800 text-white p-3 font-black uppercase italic text-xs flex justify-between"><span>${name}</span><span class="opacity-50">${shelfItems.length} items</span></div><div class="p-1">${shelfItems.length > 0 ? shelfItems.map(p => `<div class="p-3 border-b last:border-0 flex justify-between text-[11px] items-center"><div class="flex flex-col"><span class="font-medium text-gray-700 truncate mr-4">${p.Nimi}</span><span class="text-[8px] text-gray-400 uppercase">${p['Tootekood']}</span></div><span class="text-gray-300 font-mono text-[9px]">ID: ${p['Product ID']}</span></div>`).join('') : '<p class="p-4 text-center text-gray-300 text-xs italic">Empty</p>'}</div>`;
         container.appendChild(card);
     });
     mainArea.appendChild(container);
 }
 
-// SYNC & DATA
 async function assignProduct(id) {
-    if (!currentRow) return alert("Select a shelf!");
+    if (!currentRow) return alert("Select a shelf first!");
     const idx = products.findIndex(p => String(p['Product ID']) === String(id));
     if (idx !== -1) { products[idx].Location = currentRow.trim(); syncToCloud(products[idx]); saveAndRefresh(); }
 }
@@ -139,7 +134,6 @@ function saveAndRefresh() {
     renderDropZone(); renderProductList(searchInput.value); updateStats();
 }
 
-// UI
 rowInput.addEventListener('input', (e) => { currentRow = e.target.value.toUpperCase(); updateUIState(); });
 function setRow(r) { rowInput.value = r; currentRow = r; updateUIState(); }
 
@@ -159,7 +153,6 @@ function updateUIState() {
 function renderDropZone() {
     const active = [...new Set(products.map(p => (p.Location || "").trim()).filter(l => l !== ""))];
     const items = products.filter(p => (p.Location || "").trim() === (currentRow || "").trim());
-
     if (!currentRow) {
         dropZone.innerHTML = `<div class="text-center py-6"><p class="text-[9px] font-bold text-gray-400 mb-6 uppercase tracking-widest">Active Shelves</p><div class="grid grid-cols-1 gap-3" id="shelfBtnContainer"></div></div>`;
         const container = document.getElementById('shelfBtnContainer');
@@ -171,11 +164,9 @@ function renderDropZone() {
         });
         return;
     }
-
     dropZone.innerHTML = `<div class="flex justify-between items-center mb-4 border-b pb-2"><span class="font-black text-slate-700 text-xs italic">${currentRow}</span><span class="text-[10px] font-bold bg-blue-600 text-white px-2 py-0.5 rounded-full">${items.length} items</span></div><div class="space-y-2">${items.map(p => `<div class="flex justify-between items-center bg-white p-3 border rounded-xl text-[11px]"><span class="truncate font-medium text-gray-700 text-left w-full">${p.Nimi}</span><button onclick="removeProduct('${p['Product ID']}')" class="text-red-400 font-bold px-2 text-xl">✕</button></div>`).join('')}</div>`;
 }
 
-// BULK
 function openBulkModal() {
     const active = [...new Set(products.map(p => (p.Location || "").trim()).filter(l => l !== ""))].sort();
     const c = document.getElementById('bulkChecklist');
@@ -213,7 +204,6 @@ function processBulkSelection() {
     }, 500);
 }
 
-// UTILS
 async function renameShelf(old) {
     const n = prompt(`Rename ${old}:`, old); if (!n || n === old) return;
     const trimmed = n.trim().toUpperCase();
@@ -237,7 +227,6 @@ function printQRCode() {
 }
 
 function updateStats() { document.getElementById('stats-counter').innerText = `T: ${products.length.toLocaleString()} / A: ${products.filter(p => p.Location).length}`; }
-
 function exportData() {
     const list = products.filter(p => p.Location);
     let csv = "ID,Name,Location\n";
