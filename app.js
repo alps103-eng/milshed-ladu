@@ -17,7 +17,7 @@ window.onload = () => {
 
     // AUTO-SYNC HEARTBEAT: Checks for cloud updates every 30 seconds
     setInterval(() => {
-        pullFromCloud(true); // true = silent mode (no popups)
+        pullFromCloud(true); // true = silent mode
     }, 30000);
 };
 
@@ -56,10 +56,10 @@ function renderProductList(query = "") {
 
 // 4. CLOUD SYNC LOGIC
 async function assignProduct(id) {
-    if (!currentRow) return alert("Select a Shelf ID first!");
+    if (!currentRow) return alert("Vali esmalt riiul!");
     const idx = products.findIndex(p => String(p['Product ID']) === String(id));
     if (idx !== -1) {
-        products[idx].Location = currentRow;
+        products[idx].Location = currentRow.trim();
         syncToCloud(products[idx]);
         saveAndRefresh();
     }
@@ -98,15 +98,17 @@ async function pullFromCloud(silent = false) {
         for (let i = 1; i < cloudData.length; i++) {
             const [id, code, name, loc] = cloudData[i];
             const idx = products.findIndex(p => String(p['Product ID']) === String(id));
-            if (idx !== -1 && products[idx].Location !== loc) {
-                products[idx].Location = loc;
+            // Ensure we trim locations coming from the cloud to avoid matching bugs
+            const cleanLoc = (loc || "").trim();
+            if (idx !== -1 && (products[idx].Location || "").trim() !== cleanLoc) {
+                products[idx].Location = cleanLoc;
                 hasChanges = true;
             }
         }
 
         if (hasChanges) {
             saveAndRefresh();
-            if (!silent) alert("Sync Complete: Data updated from cloud.");
+            if (!silent) alert("Andmed pilvega sünkroonitud!");
         }
     } catch (e) { if (!silent) console.error("Cloud Pull Error:", e); }
 }
@@ -120,7 +122,7 @@ function saveAndRefresh() {
 
 // 5. SHELF & UI MANAGEMENT
 rowInput.addEventListener('input', (e) => {
-    currentRow = e.target.value.trim().toUpperCase();
+    currentRow = e.target.value.toUpperCase(); // We keep spaces here for the long names
     updateUIState();
 });
 
@@ -146,36 +148,43 @@ function updateUIState() {
 }
 
 function renderDropZone() {
-    const activeRows = [...new Set(products.map(p => p.Location).filter(l => l))];
-    const items = products.filter(p => p.Location === currentRow);
+    // We normalize all locations for the buttons
+    const activeRows = [...new Set(products.map(p => (p.Location || "").trim()).filter(l => l !== ""))];
+    
+    // Strict matching with trim() for Estonian character support
+    const items = products.filter(p => (p.Location || "").trim() === (currentRow || "").trim());
 
     if (!currentRow) {
         dropZone.innerHTML = `
             <div class="text-center py-6">
-                <p class="text-[10px] font-bold text-gray-400 mb-6 uppercase tracking-widest underline underline-offset-4">Active Shelves</p>
+                <p class="text-[10px] font-bold text-gray-400 mb-6 uppercase tracking-widest underline underline-offset-4">Aktiivsed Riiulid</p>
                 <div class="grid grid-cols-2 gap-3" id="shelfButtonsContainer"></div>
             </div>`;
         
         const btnContainer = document.getElementById('shelfButtonsContainer');
         activeRows.sort().forEach(rowName => {
             const btn = document.createElement('button');
-            btn.className = "bg-white border-2 border-blue-500 text-blue-600 p-4 rounded-2xl text-sm font-black shadow-md active:scale-90 transition-all";
+            btn.className = "bg-white border-2 border-blue-500 text-blue-600 p-4 rounded-2xl text-xs font-black shadow-md active:scale-95 transition-all leading-tight";
             btn.innerText = rowName;
-            // This event listener fix solves the Estonian character issue:
-            btn.addEventListener('click', () => setRow(rowName));
+            
+            // Fix: Direct event listener avoids string-encoding issues in HTML attributes
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                setRow(rowName);
+            });
             btnContainer.appendChild(btn);
         });
 
         if (activeRows.length === 0) {
-            btnContainer.innerHTML = '<p class="text-sm italic col-span-2 text-gray-300">No shelves assigned yet.</p>';
+            btnContainer.innerHTML = '<p class="text-sm italic col-span-2 text-gray-300">Riiuleid pole veel määratud.</p>';
         }
         return;
     }
 
     dropZone.innerHTML = `
         <div class="flex justify-between items-center mb-4 border-b pb-2">
-            <span class="font-black text-slate-700 text-sm italic">${currentRow}</span>
-            <span class="text-[10px] font-bold bg-blue-600 text-white px-2 py-0.5 rounded-full">${items.length} items</span>
+            <span class="font-black text-slate-700 text-xs italic truncate mr-2">${currentRow}</span>
+            <span class="text-[10px] font-bold bg-blue-600 text-white px-2 py-0.5 rounded-full shrink-0">${items.length} toodet</span>
         </div>
         <div class="space-y-2" id="shelfItemsList"></div>`;
     
@@ -194,11 +203,11 @@ function renderDropZone() {
 
 function resetCurrentShelf() {
     if (!currentRow) return;
-    const count = products.filter(p => p.Location === currentRow).length;
+    const count = products.filter(p => (p.Location || "").trim() === (currentRow || "").trim()).length;
     if (count === 0) return;
-    if (confirm(`Clear all ${count} items from ${currentRow}?`)) {
+    if (confirm(`Kas soovid tühjendada riiuli ${currentRow} (${count} toodet)?`)) {
         products.forEach(p => {
-            if (p.Location === currentRow) {
+            if ((p.Location || "").trim() === (currentRow || "").trim()) {
                 p.Location = "";
                 syncToCloud(p);
             }
@@ -220,7 +229,7 @@ function printQRCode() {
     if(!img) return;
     ctx.drawImage(img, 50, 110, 250, 250);
     const link = document.createElement('a');
-    link.download = `Shelf_${currentRow}.png`;
+    link.download = `Riiul_${currentRow}.png`;
     link.href = canvas.toDataURL();
     link.click();
 }
@@ -232,7 +241,7 @@ function updateStats() {
 
 function exportData() {
     const list = products.filter(p => p.Location);
-    if(list.length === 0) return alert("No items assigned!");
+    if(list.length === 0) return alert("Ühtegi toodet pole riiulitele määratud!");
     let csv = "Product ID,Tootekood,Nimi,Location\n";
     list.forEach(p => {
         const cleanName = String(p.Nimi).replace(/,/g, " ");
@@ -241,6 +250,6 @@ function exportData() {
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `milshed_export.csv`;
+    a.download = `milshed_ladu_export.csv`;
     a.click();
 }
