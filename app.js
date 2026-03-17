@@ -15,6 +15,13 @@ window.onload = () => {
     renderProductList();
     renderDropZone();
 
+    // NEW: Check URL for QR code deep link (e.g., ?shelf=A1)
+    const urlParams = new URLSearchParams(window.location.search);
+    const shelfFromUrl = urlParams.get('shelf');
+    if (shelfFromUrl) {
+        setRow(decodeURIComponent(shelfFromUrl));
+    }
+
     setInterval(() => {
         pullFromCloud(true);
     }, 30000);
@@ -71,23 +78,17 @@ async function removeProduct(id) {
     }
 }
 
-// RENAME LOGIC
 async function renameShelf(oldName) {
     const newName = prompt(`Muuda riiuli nime:`, oldName);
     if (!newName || newName.trim() === "" || newName === oldName) return;
-
     const trimmedNewName = newName.trim().toUpperCase();
-    
-    // Update all local products
     products.forEach(p => {
         if ((p.Location || "").trim() === oldName.trim()) {
             p.Location = trimmedNewName;
-            syncToCloud(p); // Update each row in Google Sheets
+            syncToCloud(p);
         }
     });
-
     saveAndRefresh();
-    alert(`Riiul '${oldName}' on nüüd '${trimmedNewName}'`);
 }
 
 async function syncToCloud(product) {
@@ -142,7 +143,11 @@ function updateUIState() {
     const nav = document.getElementById('shelf-nav');
     qrEl.innerHTML = "";
     if (currentRow) {
-        new QRCode(qrEl, { text: currentRow, width: 64, height: 64 });
+        // QR Code now contains the full link to your website with the shelf ID
+        const baseUrl = window.location.href.split('?')[0];
+        const fullUrl = `${baseUrl}?shelf=${encodeURIComponent(currentRow)}`;
+        new QRCode(qrEl, { text: fullUrl, width: 64, height: 64 });
+        
         nav.classList.remove('hidden');
         document.getElementById('nav-shelf-id').innerText = currentRow;
     } else {
@@ -161,27 +166,18 @@ function renderDropZone() {
                 <p class="text-[10px] font-bold text-gray-400 mb-6 uppercase tracking-widest underline underline-offset-4">Riiulid</p>
                 <div class="grid grid-cols-1 gap-3" id="shelfButtonsContainer"></div>
             </div>`;
-        
         const btnContainer = document.getElementById('shelfButtonsContainer');
         activeRows.sort().forEach(rowName => {
             const wrapper = document.createElement('div');
             wrapper.className = "flex gap-2 items-stretch";
-            
-            // Main Shelf Button
             const btn = document.createElement('button');
             btn.className = "flex-1 bg-white border-2 border-blue-500 text-blue-600 p-4 rounded-2xl text-xs font-black shadow-md active:scale-95 transition-all text-left truncate";
             btn.innerText = rowName;
             btn.addEventListener('click', () => setRow(rowName));
-            
-            // Rename Icon Button
             const editBtn = document.createElement('button');
             editBtn.className = "bg-gray-100 border-2 border-gray-200 text-gray-400 px-4 rounded-2xl text-xs hover:bg-blue-50 hover:text-blue-500 transition-colors";
             editBtn.innerHTML = "✎";
-            editBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                renameShelf(rowName);
-            });
-
+            editBtn.addEventListener('click', (e) => { e.stopPropagation(); renameShelf(rowName); });
             wrapper.appendChild(btn);
             wrapper.appendChild(editBtn);
             btnContainer.appendChild(wrapper);
@@ -195,7 +191,6 @@ function renderDropZone() {
             <span class="text-[10px] font-bold bg-blue-600 text-white px-2 py-0.5 rounded-full shrink-0">${items.length} toodet</span>
         </div>
         <div class="space-y-2" id="shelfItemsList"></div>`;
-    
     const listContainer = document.getElementById('shelfItemsList');
     items.forEach(p => {
         const itemDiv = document.createElement('div');
@@ -227,11 +222,16 @@ function printQRCode() {
     canvas.width = 350; canvas.height = 450;
     const ctx = canvas.getContext("2d");
     ctx.fillStyle = "white"; ctx.fillRect(0, 0, 350, 450);
-    ctx.fillStyle = "black"; ctx.font = "bold 40px Arial"; ctx.textAlign = "center";
+    ctx.fillStyle = "black"; ctx.font = "bold 30px Arial"; ctx.textAlign = "center";
     ctx.fillText(currentRow, 175, 70);
+    
     const img = document.querySelector("#qrcode img");
     if(!img) return;
-    ctx.drawImage(img, 50, 110, 250, 250);
+    ctx.drawImage(img, 50, 100, 250, 250);
+    
+    ctx.font = "10px Arial"; ctx.fillStyle = "#CCC";
+    ctx.fillText("SCAN TO OPEN SHELF", 175, 380);
+    
     const link = document.createElement('a');
     link.download = `Riiul_${currentRow}.png`;
     link.href = canvas.toDataURL();
