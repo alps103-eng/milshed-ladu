@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Milshed Warehouse</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        body { touch-action: pan-y; position: fixed; width: 100%; height: 100%; }
+        .product-card { touch-action: manipulation; transition: all 0.2s; }
+        .product-card:active { transform: scale(0.96); opacity: 0.8; }
+        #productList, #dropZone { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+
+        @media (max-width: 768px) {
+            .main-container { flex-direction: column; }
+            .side-panel { width: 100% !important; height: 40vh; min-height: 40vh; border-right: none; }
+            .shelf-panel { width: 100% !important; height: 60vh; min-height: 60vh; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col font-sans overflow-hidden">
+
+    <header class="bg-slate-900 text-white p-3 shadow-xl flex justify-between items-center z-30 shrink-0">
+        <div class="flex items-center gap-2">
+            <div class="bg-blue-600 px-2 py-1 rounded font-bold text-lg">M</div>
+            <h1 class="text-xs font-bold leading-tight hidden sm:block uppercase tracking-widest">Milshed Ladu</h1>
+        </div>
+        
+        <div class="flex items-center gap-2 sm:gap-3">
+            <div id="stats-counter" class="text-[10px] font-mono text-green-400">T: 0 / A: 0</div>
+            
+            <button onclick="pullFromCloud()" class="bg-green-600 text-white px-3 py-1.5 rounded-full text-[10px] font-bold shadow-lg active:bg-green-700 transition-colors uppercase">
+                Sync All
+            </button>
+            
+            <button onclick="exportData()" class="bg-blue-600 text-white px-3 py-1.5 rounded-full text-[10px] font-bold shadow-lg active:bg-blue-800 transition-colors uppercase">
+                Export
+            </button>
+        </div>
+    </header>
+
+    <main class="flex flex-1 main-container overflow-hidden">
+        <section class="side-panel w-1/3 border-r bg-white flex flex-col shadow-lg z-10 shrink-0">
+            <div class="p-3 bg-gray-50 border-b flex gap-2">
+                <input type="text" id="productSearch" autocomplete="off" placeholder="Search ID, Name..." 
+                    class="flex-1 p-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                <button onclick="document.getElementById('productSearch').value=''; renderProductList();" 
+                    class="bg-gray-200 px-4 rounded-xl text-xs font-bold text-gray-600 active:bg-gray-300">✕</button>
+            </div>
+            <div id="productList" class="flex-1 overflow-y-auto p-3 space-y-2 pb-20"></div>
+        </section>
+
+        <section class="shelf-panel flex-1 bg-slate-50 flex flex-col overflow-hidden">
+            <div id="shelf-nav" class="bg-white border-b p-3 flex justify-between items-center hidden shadow-sm">
+                <div class="flex items-center gap-4">
+                    <button onclick="setRow('')" class="flex items-center gap-1 text-blue-600 font-bold text-sm">
+                        ← <span class="underline">Back</span>
+                    </button>
+                    <button onclick="resetCurrentShelf()" class="text-[10px] font-bold text-red-500 uppercase tracking-tighter border border-red-100 px-2 py-1 rounded hover:bg-red-50 active:bg-red-100 transition-colors">
+                        Clear Shelf
+                    </button>
+                </div>
+                <span id="nav-shelf-id" class="font-black text-slate-800 uppercase text-sm"></span>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-4">
+                <div class="max-w-2xl mx-auto space-y-4">
+                    <div class="bg-white p-5 rounded-3xl shadow-sm border border-gray-200">
+                        <div class="flex justify-between items-center mb-6">
+                            <div class="flex-1 mr-4">
+                                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Active Shelf</label>
+                                <input type="text" id="rowInput" placeholder="E.G. A1" 
+                                    class="text-2xl font-black text-slate-800 w-full p-1 border-b-2 border-blue-100 focus:border-blue-500 outline-none uppercase">
+                            </div>
+                            <div class="flex flex-col items-center">
+                                <div id="qrcode" class="w-16 h-16 flex items-center justify-center border rounded bg-gray-50 overflow-hidden"></div>
+                                <button onclick="printQRCode()" class="text-[9px] font-bold text-blue-500 mt-1 uppercase tracking-tighter">Save PNG</button>
+                            </div>
+                        </div>
+                        <div id="dropZone" class="min-h-[200px] border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50 p-4 transition-all"></div>
+                    </div>
+                    
+                    <button onclick="if(confirm('Wipe ENTIRE warehouse data?')) { localStorage.clear(); location.reload(); }" class="w-full text-center text-[9px] text-gray-300 uppercase tracking-widest mt-8 hover:text-red-300 transition-colors">System Reset</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="data.js"></script> 
+    <script src="app.js"></script>
+</body>
+</html>
