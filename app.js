@@ -32,22 +32,45 @@ const dropZone = document.getElementById('dropZone');
 const rowInput = document.getElementById('rowInput');
 const searchInput = document.getElementById('productSearch');
 
+// UPDATED SEARCH LOGIC: ID, Name, EAN, or Product Code
 function renderProductList(query = "") {
     productListEl.innerHTML = "";
-    products.filter(p => `${p['Nimi']} ${p['Product ID']} ${p['EAN13']} ${p.Location}`.toLowerCase().includes(query)).slice(0, 40).forEach(p => {
+    const lowerQuery = query.toLowerCase().trim();
+
+    const filtered = products.filter(p => {
+        const id = String(p['Product ID'] || "").toLowerCase();
+        const name = String(p['Nimi'] || "").toLowerCase();
+        const ean = String(p['EAN13'] || "").toLowerCase();
+        const code = String(p['Tootekood'] || "").toLowerCase();
+        
+        return id.includes(lowerQuery) || 
+               name.includes(lowerQuery) || 
+               ean.includes(lowerQuery) || 
+               code.includes(lowerQuery);
+    });
+
+    filtered.slice(0, 40).forEach(p => {
+        const isAssigned = p.Location && p.Location !== "";
         const div = document.createElement('div');
-        div.className = `product-card p-3 rounded-xl border shadow-sm cursor-pointer ${p.Location ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-100'}`;
+        div.className = `product-card p-3 rounded-xl border shadow-sm cursor-pointer ${isAssigned ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-100'}`;
         div.onclick = () => assignProduct(p['Product ID']);
-        div.innerHTML = `<div class="flex justify-between text-[9px] mb-1 uppercase font-bold"><span class="text-gray-400">ID: ${p['Product ID']}</span>${p.Location ? `<span class="bg-blue-600 text-white px-2 rounded-full">${p.Location}</span>` : ''}</div><div class="text-xs font-bold text-gray-800 leading-tight text-left">${p['Nimi']}</div>`;
+        div.innerHTML = `
+            <div class="flex justify-between text-[9px] mb-1 uppercase font-bold">
+                <span class="text-gray-400">ID: ${p['Product ID']}</span>
+                ${isAssigned ? `<span class="bg-blue-600 text-white px-2 rounded-full">${p.Location}</span>` : ''}
+            </div>
+            <div class="text-xs font-bold text-gray-800 leading-tight text-left">${p['Nimi']}</div>
+            <div class="text-[8px] text-gray-400 mt-1 uppercase">Code: ${p['Tootekood']} | EAN: ${p['EAN13']}</div>
+        `;
         productListEl.appendChild(div);
     });
 }
 
 function enterManifestMode(shelfList) {
-    document.getElementById('inputPanel').style.display = "none"; // Hide Left Panel
-    document.getElementById('standardShelfView').style.display = "none"; // Hide Top Search
-    document.getElementById('bulkBtnHeader').style.display = "none"; // Hide Bulk button
-    document.getElementById('clearBtn').style.display = "none"; // Hide Clear button
+    document.getElementById('inputPanel').style.display = "none";
+    document.getElementById('standardShelfView').style.display = "none";
+    document.getElementById('bulkBtnHeader').style.display = "none";
+    document.getElementById('clearBtn').style.display = "none";
     
     const nav = document.getElementById('shelf-nav');
     nav.classList.remove('hidden');
@@ -69,7 +92,10 @@ function enterManifestMode(shelfList) {
             <div class="p-1">
                 ${shelfItems.length > 0 ? shelfItems.map(p => `
                     <div class="p-3 border-b last:border-0 flex justify-between text-[11px] items-center">
-                        <span class="font-medium text-gray-700 truncate mr-4">${p.Nimi}</span>
+                        <div class="flex flex-col">
+                            <span class="font-medium text-gray-700 truncate mr-4">${p.Nimi}</span>
+                            <span class="text-[8px] text-gray-400 uppercase">${p['Tootekood']}</span>
+                        </div>
                         <span class="text-gray-300 font-mono text-[9px]">ID: ${p['Product ID']}</span>
                     </div>
                 `).join('') : '<p class="p-4 text-center text-gray-300 text-xs italic">Empty</p>'}
@@ -102,7 +128,7 @@ async function pullFromCloud(silent = false) {
         let changed = false;
         for (let i = 1; i < data.length; i++) {
             const idx = products.findIndex(p => String(p['Product ID']) === String(data[i][0]));
-            if (idx !== -1 && (products[idx].Location || "").trim() !== (data[i][3] || "").trim()) { products[idx].Location = data[i][3].trim(); changed = true; }
+            if (idx !== -1 && (products[idx].Location || "").trim() !== (data[i][3] || "").trim()) { products[idx].Location = (data[i][3] || "").trim(); changed = true; }
         }
         if (changed) saveAndRefresh();
     } catch (e) {}
@@ -110,7 +136,7 @@ async function pullFromCloud(silent = false) {
 
 function saveAndRefresh() {
     localStorage.setItem('milshed_inventory_updates', JSON.stringify(products));
-    renderDropZone(); renderProductList(searchInput.value.toLowerCase()); updateStats();
+    renderDropZone(); renderProductList(searchInput.value); updateStats();
 }
 
 // UI
@@ -211,6 +237,7 @@ function printQRCode() {
 }
 
 function updateStats() { document.getElementById('stats-counter').innerText = `T: ${products.length.toLocaleString()} / A: ${products.filter(p => p.Location).length}`; }
+
 function exportData() {
     const list = products.filter(p => p.Location);
     let csv = "ID,Name,Location\n";
