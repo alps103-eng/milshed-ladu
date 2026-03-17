@@ -145,7 +145,6 @@ function updateUIState() {
         const baseUrl = window.location.origin + window.location.pathname;
         const fullUrl = `${baseUrl}?shelf=${encodeURIComponent(currentRow)}`;
         
-        // HIGHER QUALITY: Increased width/height to 1024 for crystal clear scanning
         new QRCode(qrEl, { 
             text: fullUrl, 
             width: 1024, 
@@ -225,25 +224,25 @@ function printQRCode() {
     if (!currentRow) return;
     const canvas = document.createElement("canvas");
     canvas.width = 400; 
-    canvas.height = 450;
+    canvas.height = 420; // Slightly shorter to remove footer space
     const ctx = canvas.getContext("2d");
     
-    // Background
+    // Clean White Background
     ctx.fillStyle = "white"; 
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // Shelf ID Header
+    // Bold Shelf ID
     ctx.fillStyle = "black"; 
-    ctx.font = "bold 65px Arial"; 
+    ctx.font = "bold 70px Arial"; 
     ctx.textAlign = "center";
     ctx.fillText(currentRow, 200, 85);
     
-    // QR Code (Hidden on page, but used here)
+    // Plain QR Code
     const img = document.querySelector("#qrcode img");
     if(!img) return;
     
-    // Draw the image onto the high-res canvas
-    ctx.drawImage(img, 40, 110, 320, 320);
+    // Drawn centered with no text below it
+    ctx.drawImage(img, 40, 100, 320, 320);
     
     const link = document.createElement('a');
     link.download = `Riiul_${currentRow}.png`;
