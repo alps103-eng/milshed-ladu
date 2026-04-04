@@ -165,17 +165,27 @@ function renderProductList(query = "") {
         const isAssigned = productLoc !== "";
         const isCurrentShelf = currentRow && productLoc === currentRow.toUpperCase();
         const div = document.createElement('div');
-        div.className = `product-card p-3 rounded-xl border shadow-sm cursor-pointer ${isCurrentShelf ? 'product-highlight border-amber-300' : (isAssigned ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-100')}`;
-        div.onclick = () => handleProductClick(p);
-
-        div.innerHTML = `
+        div.className = `product-card p-3 rounded-xl border shadow-sm ${isCurrentShelf ? 'product-highlight border-amber-300' : (isAssigned ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-100')}`;
+        
+        const contentDiv = document.createElement('div');
+        contentDiv.className = "cursor-pointer";
+        contentDiv.onclick = () => handleProductClick(p);
+        contentDiv.innerHTML = `
             <div class="flex justify-between text-[9px] mb-1 uppercase font-bold text-left">
                 <span class="text-gray-400">ID: ${p['Product ID']}</span>
                 ${isAssigned ? `<span class="bg-blue-600 text-white px-2 rounded-full">${p.Location}</span>` : ''}
             </div>
             <div class="text-xs font-bold text-gray-800 leading-tight text-left">${p['Nimi']}</div>
-            <div class="text-[8px] text-gray-400 mt-1 uppercase text-left">Code: ${p['Tootekood'] || 'N/A'} | EAN: ${p['EAN13'] || 'N/A'}</div>
+            <div class="text-[8px] text-gray-400 mt-1 uppercase text-left">Code: ${p['Tootekood'] || 'N/A'}</div>
         `;
+        div.appendChild(contentDiv);
+        
+        const eanDiv = document.createElement('div');
+        eanDiv.className = "flex justify-between items-center mt-2 pt-2 border-t border-gray-200";
+        eanDiv.innerHTML = `<span class="text-[8px] text-gray-500">EAN: ${p['EAN13'] || 'None'}</span><button class="text-blue-600 font-bold text-[8px] hover:underline">Edit</button>`;
+        eanDiv.querySelector('button').onclick = (e) => { e.stopPropagation(); editProductEAN(p['Product ID']); };
+        div.appendChild(eanDiv);
+        
         listEl.appendChild(div);
     });
 
@@ -212,8 +222,20 @@ async function removeProduct(id) {
     if (idx !== -1) { products[idx].Location = ""; syncToCloud(products[idx]); saveAndRefresh(); }
 }
 
+async function editProductEAN(id) {
+    const idx = products.findIndex(p => String(p['Product ID']) === String(id));
+    if (idx === -1) return;
+    const currentEAN = products[idx]['EAN13'] || "";
+    const newEAN = prompt(`Edit EAN for ${products[idx]['Nimi']}:`, currentEAN);
+    if (newEAN !== null) {
+        products[idx]['EAN13'] = newEAN.trim();
+        syncToCloud(products[idx]);
+        saveAndRefresh();
+    }
+}
+
 async function syncToCloud(product) {
-    try { await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ productId: product['Product ID'], tootekood: product['Tootekood'], nimi: product['Nimi'], location: product['Location'] || "" }) }); } catch (e) {}
+    try { await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ productId: product['Product ID'], tootekood: product['Tootekood'], nimi: product['Nimi'], location: product['Location'] || "", ean13: product['EAN13'] || "" }) }); } catch (e) {}
 }
 
 async function pullFromCloud(silent = false) {
@@ -292,7 +314,7 @@ function renderDropZone() {
         });
         return;
     }
-    dz.innerHTML = `<div class="flex justify-between items-center mb-4 border-b pb-2"><span class="font-black text-slate-700 text-xs italic">${currentRow}</span><span class="text-[10px] font-bold bg-blue-600 text-white px-2 py-0.5 rounded-full">${items.length} items</span></div><div class="space-y-2 text-left">${items.map(p => `<div class="flex flex-col bg-white p-4 border rounded-2xl shadow-sm text-left"><div class="flex justify-between items-center mb-1"><span class="font-bold text-slate-400 text-[10px] uppercase">ID: ${p['Product ID']}</span><button onclick="removeProduct('${p['Product ID']}')" class="text-red-400 font-bold px-2 text-xl">✕</button></div><span class="font-bold text-slate-800 text-sm leading-tight">${p.Nimi}</span></div>`).join('')}</div>`;
+    dz.innerHTML = `<div class="flex justify-between items-center mb-4 border-b pb-2"><span class="font-black text-slate-700 text-xs italic">${currentRow}</span><span class="text-[10px] font-bold bg-blue-600 text-white px-2 py-0.5 rounded-full">${items.length} items</span></div><div class="space-y-2 text-left">${items.map(p => `<div class="flex flex-col bg-white p-4 border rounded-2xl shadow-sm text-left"><div class="flex justify-between items-center mb-1"><span class="font-bold text-slate-400 text-[10px] uppercase">ID: ${p['Product ID']}</span><button onclick="removeProduct('${p['Product ID']}')" class="text-red-400 font-bold px-2 text-xl">✕</button></div><span class="font-bold text-slate-800 text-sm leading-tight">${p.Nimi}</span><div class="flex justify-between items-center mt-2 pt-2 border-t border-gray-100"><span class="text-[8px] text-gray-500">EAN: ${p['EAN13'] || 'No EAN'}</span><button onclick="editProductEAN('${p['Product ID']}')" class="text-blue-600 font-bold text-[8px] hover:underline">Edit</button></div></div>`).join('')}</div>`;
 }
 
 function openBulkModal() {
