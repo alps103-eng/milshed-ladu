@@ -18,6 +18,15 @@ window.onload = () => {
     const saved = localStorage.getItem('milshed_inventory_updates');
     products = saved ? JSON.parse(saved) : (typeof productData !== 'undefined' ? productData : []);
     
+    // Migrate single EAN13 to array format
+    products.forEach(p => {
+        if (typeof p.EAN13 === 'string') {
+            p.EAN13 = p.EAN13 && p.EAN13 !== '0' ? [p.EAN13] : [];
+        } else if (!Array.isArray(p.EAN13)) {
+            p.EAN13 = [];
+        }
+    });
+    
     updateStats();
     renderProductList(""); 
     renderDropZone();
@@ -145,7 +154,7 @@ function renderProductList(query = "") {
         if (!cleanQuery) return true;
         const id = normalizeText(p['Product ID']);
         const name = normalizeText(p['Nimi']);
-        const ean = normalizeText(p['EAN13']);
+        const ean = Array.isArray(p['EAN13']) ? p['EAN13'].map(e => normalizeText(e)).join(' ') : normalizeText(p['EAN13'] || '');
         const code = normalizeText(p['Tootekood']);
         return id.includes(cleanQuery) || name.includes(cleanQuery) || ean.includes(cleanQuery) || code.includes(cleanQuery);
     });
@@ -176,15 +185,40 @@ function renderProductList(query = "") {
                 ${isAssigned ? `<span class="bg-blue-600 text-white px-2 rounded-full">${p.Location}</span>` : ''}
             </div>
             <div class="text-xs font-bold text-gray-800 leading-tight text-left">${p['Nimi']}</div>
-            <div class="text-[8px] text-gray-400 mt-1 uppercase text-left">Code: ${p['Tootekood'] || 'N/A'}</div>
         `;
         div.appendChild(contentDiv);
         
-        const eanDiv = document.createElement('div');
-        eanDiv.className = "flex justify-between items-center mt-2 pt-2 border-t border-gray-200";
-        eanDiv.innerHTML = `<span class="text-[8px] text-gray-500">EAN: ${p['EAN13'] || 'None'}</span><button class="text-blue-600 font-bold text-[8px] hover:underline">Edit</button>`;
-        eanDiv.querySelector('button').onclick = (e) => { e.stopPropagation(); editProductEAN(p['Product ID']); };
-        div.appendChild(eanDiv);
+        const codeDiv = document.createElement('div');
+        codeDiv.className = "flex justify-between items-center mt-2 pt-2 border-t border-gray-200";
+        codeDiv.innerHTML = `<span class="text-[8px] text-gray-500">Code: ${p['Tootekood'] || 'None'}</span><button class="text-blue-600 font-bold text-[8px] hover:underline">Edit</button>`;
+        codeDiv.querySelector('button').onclick = (e) => { e.stopPropagation(); editProductCode(p['Product ID']); };
+        div.appendChild(codeDiv);
+        
+        // EAN section with multiple EANs support
+        const eanContainer = document.createElement('div');
+        eanContainer.className = "mt-1";
+        
+        const eanHeader = document.createElement('div');
+        eanHeader.className = "flex justify-between items-center";
+        eanHeader.innerHTML = `<span class="text-[8px] text-gray-500">EANs:</span><button class="text-green-600 font-bold text-[8px] hover:underline" onclick="event.stopPropagation(); addProductEAN('${p['Product ID']}')">+ Add</button>`;
+        eanContainer.appendChild(eanHeader);
+        
+        const eans = Array.isArray(p['EAN13']) ? p['EAN13'] : (p['EAN13'] ? [p['EAN13']] : []);
+        if (eans.length === 0) {
+            const noEanDiv = document.createElement('div');
+            noEanDiv.className = "text-[8px] text-gray-400 italic mt-1";
+            noEanDiv.textContent = "No EANs";
+            eanContainer.appendChild(noEanDiv);
+        } else {
+            eans.forEach((ean, index) => {
+                const eanDiv = document.createElement('div');
+                eanDiv.className = "flex justify-between items-center mt-1";
+                eanDiv.innerHTML = `<span class="text-[8px] text-gray-600">${ean}</span><div class="flex gap-1"><button class="text-blue-600 font-bold text-[8px] hover:underline" onclick="event.stopPropagation(); editProductEAN('${p['Product ID']}', ${index})">Edit</button><button class="text-red-600 font-bold text-[8px] hover:underline" onclick="event.stopPropagation(); removeProductEAN('${p['Product ID']}', ${index})">×</button></div>`;
+                eanContainer.appendChild(eanDiv);
+            });
+        }
+        
+        div.appendChild(eanContainer);
         
         listEl.appendChild(div);
     });
@@ -222,20 +256,68 @@ async function removeProduct(id) {
     if (idx !== -1) { products[idx].Location = ""; syncToCloud(products[idx]); saveAndRefresh(); }
 }
 
-async function editProductEAN(id) {
+async function addProductEAN(id) {
     const idx = products.findIndex(p => String(p['Product ID']) === String(id));
     if (idx === -1) return;
-    const currentEAN = products[idx]['EAN13'] || "";
+    
+    const newEAN = prompt(`Add new EAN for ${products[idx]['Nimi']}:`);
+    if (newEAN && newEAN.trim()) {
+        if (!Array.isArray(products[idx]['EAN13'])) {
+            products[idx]['EAN13'] = products[idx]['EAN13'] ? [products[idx]['EAN13']] : [];
+        }
+        products[idx]['EAN13'].push(newEAN.trim());
+        syncToCloud(products[idx]);
+        saveAndRefresh();
+    }
+}
+
+async function editProductEAN(id, index = 0) {
+    const idx = products.findIndex(p => String(p['Product ID']) === String(id));
+    if (idx === -1) return;
+    
+    const eans = Array.isArray(products[idx]['EAN13']) ? products[idx]['EAN13'] : (products[idx]['EAN13'] ? [products[idx]['EAN13']] : []);
+    if (index >= eans.length) return;
+    
+    const currentEAN = eans[index];
     const newEAN = prompt(`Edit EAN for ${products[idx]['Nimi']}:`, currentEAN);
     if (newEAN !== null) {
-        products[idx]['EAN13'] = newEAN.trim();
+        eans[index] = newEAN.trim();
+        products[idx]['EAN13'] = eans;
+        syncToCloud(products[idx]);
+        saveAndRefresh();
+    }
+}
+
+async function removeProductEAN(id, index) {
+    const idx = products.findIndex(p => String(p['Product ID']) === String(id));
+    if (idx === -1) return;
+    
+    const eans = Array.isArray(products[idx]['EAN13']) ? products[idx]['EAN13'] : (products[idx]['EAN13'] ? [products[idx]['EAN13']] : []);
+    if (index >= eans.length || eans.length <= 1) return;
+    
+    if (confirm(`Remove EAN "${eans[index]}" from ${products[idx]['Nimi']}?`)) {
+        eans.splice(index, 1);
+        products[idx]['EAN13'] = eans;
+        syncToCloud(products[idx]);
+        saveAndRefresh();
+    }
+}
+
+async function editProductCode(id) {
+    const idx = products.findIndex(p => String(p['Product ID']) === String(id));
+    if (idx === -1) return;
+    const currentCode = products[idx]['Tootekood'] || "";
+    const newCode = prompt(`Edit Product Code for ${products[idx]['Nimi']}:`, currentCode);
+    if (newCode !== null) {
+        products[idx]['Tootekood'] = newCode.trim();
         syncToCloud(products[idx]);
         saveAndRefresh();
     }
 }
 
 async function syncToCloud(product) {
-    try { await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ productId: product['Product ID'], tootekood: product['Tootekood'], nimi: product['Nimi'], location: product['Location'] || "", ean13: product['EAN13'] || "" }) }); } catch (e) {}
+    const eans = Array.isArray(product['EAN13']) ? product['EAN13'] : (product['EAN13'] ? [product['EAN13']] : []);
+    try { await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ productId: product['Product ID'], tootekood: product['Tootekood'], nimi: product['Nimi'], location: product['Location'] || "", ean13: JSON.stringify(eans) }) }); } catch (e) {}
 }
 
 async function pullFromCloud(silent = false) {
@@ -245,7 +327,32 @@ async function pullFromCloud(silent = false) {
         let changed = false;
         for (let i = 1; i < data.length; i++) {
             const idx = products.findIndex(p => String(p['Product ID']) === String(data[i][0]));
-            if (idx !== -1 && (products[idx].Location || "").trim() !== (data[i][3] || "").trim()) { products[idx].Location = (data[i][3] || "").trim(); changed = true; }
+            if (idx !== -1) {
+                // Update location
+                if ((products[idx].Location || "").trim() !== (data[i][3] || "").trim()) {
+                    products[idx].Location = (data[i][3] || "").trim();
+                    changed = true;
+                }
+                // Update EAN13 if server has newer data
+                if (data[i][4]) {
+                    try {
+                        const serverEans = JSON.parse(data[i][4]);
+                        const localEans = Array.isArray(products[idx]['EAN13']) ? products[idx]['EAN13'] : (products[idx]['EAN13'] ? [products[idx]['EAN13']] : []);
+                        if (JSON.stringify(serverEans.sort()) !== JSON.stringify(localEans.sort())) {
+                            products[idx]['EAN13'] = serverEans;
+                            changed = true;
+                        }
+                    } catch (e) {
+                        // If JSON parsing fails, treat as single EAN
+                        const serverEan = data[i][4];
+                        const localEans = Array.isArray(products[idx]['EAN13']) ? products[idx]['EAN13'] : (products[idx]['EAN13'] ? [products[idx]['EAN13']] : []);
+                        if (localEans.length !== 1 || localEans[0] !== serverEan) {
+                            products[idx]['EAN13'] = [serverEan];
+                            changed = true;
+                        }
+                    }
+                }
+            }
         }
         if (changed) saveAndRefresh();
     } catch (e) {}
@@ -314,7 +421,60 @@ function renderDropZone() {
         });
         return;
     }
-    dz.innerHTML = `<div class="flex justify-between items-center mb-4 border-b pb-2"><span class="font-black text-slate-700 text-xs italic">${currentRow}</span><span class="text-[10px] font-bold bg-blue-600 text-white px-2 py-0.5 rounded-full">${items.length} items</span></div><div class="space-y-2 text-left">${items.map(p => `<div class="flex flex-col bg-white p-4 border rounded-2xl shadow-sm text-left"><div class="flex justify-between items-center mb-1"><span class="font-bold text-slate-400 text-[10px] uppercase">ID: ${p['Product ID']}</span><button onclick="removeProduct('${p['Product ID']}')" class="text-red-400 font-bold px-2 text-xl">✕</button></div><span class="font-bold text-slate-800 text-sm leading-tight">${p.Nimi}</span><div class="flex justify-between items-center mt-2 pt-2 border-t border-gray-100"><span class="text-[8px] text-gray-500">EAN: ${p['EAN13'] || 'No EAN'}</span><button onclick="editProductEAN('${p['Product ID']}')" class="text-blue-600 font-bold text-[8px] hover:underline">Edit</button></div></div>`).join('')}</div>`;
+    
+    // Create shelf products with multiple EAN support
+    const container = document.createElement('div');
+    container.className = "space-y-2 text-left";
+    
+    items.forEach(p => {
+        const productDiv = document.createElement('div');
+        productDiv.className = "flex flex-col bg-white p-4 border rounded-2xl shadow-sm text-left";
+        
+        const headerDiv = document.createElement('div');
+        headerDiv.className = "flex justify-between items-center mb-1";
+        headerDiv.innerHTML = `<span class="font-bold text-slate-400 text-[10px] uppercase">ID: ${p['Product ID']}</span><button onclick="removeProduct('${p['Product ID']}')" class="text-red-400 font-bold px-2 text-xl">✕</button>`;
+        productDiv.appendChild(headerDiv);
+        
+        const nameDiv = document.createElement('div');
+        nameDiv.className = "font-bold text-slate-800 text-sm leading-tight";
+        nameDiv.textContent = p.Nimi;
+        productDiv.appendChild(nameDiv);
+        
+        const codeDiv = document.createElement('div');
+        codeDiv.className = "flex justify-between items-center mt-2 pt-2 border-t border-gray-100";
+        codeDiv.innerHTML = `<span class="text-[8px] text-gray-500">Code: ${p['Tootekood'] || 'No Code'}</span><button onclick="editProductCode('${p['Product ID']}')" class="text-blue-600 font-bold text-[8px] hover:underline">Edit</button>`;
+        productDiv.appendChild(codeDiv);
+        
+        // EAN section for shelf view
+        const eanContainer = document.createElement('div');
+        eanContainer.className = "mt-1";
+        
+        const eanHeader = document.createElement('div');
+        eanHeader.className = "flex justify-between items-center";
+        eanHeader.innerHTML = `<span class="text-[8px] text-gray-500">EANs:</span><button class="text-green-600 font-bold text-[8px] hover:underline" onclick="addProductEAN('${p['Product ID']}')">+ Add</button>`;
+        eanContainer.appendChild(eanHeader);
+        
+        const eans = Array.isArray(p['EAN13']) ? p['EAN13'] : (p['EAN13'] ? [p['EAN13']] : []);
+        if (eans.length === 0) {
+            const noEanDiv = document.createElement('div');
+            noEanDiv.className = "text-[8px] text-gray-400 italic mt-1";
+            noEanDiv.textContent = "No EANs";
+            eanContainer.appendChild(noEanDiv);
+        } else {
+            eans.forEach((ean, index) => {
+                const eanDiv = document.createElement('div');
+                eanDiv.className = "flex justify-between items-center mt-1";
+                eanDiv.innerHTML = `<span class="text-[8px] text-gray-600">${ean}</span><div class="flex gap-1"><button class="text-blue-600 font-bold text-[8px] hover:underline" onclick="editProductEAN('${p['Product ID']}', ${index})">Edit</button><button class="text-red-600 font-bold text-[8px] hover:underline" onclick="removeProductEAN('${p['Product ID']}', ${index})">×</button></div>`;
+                eanContainer.appendChild(eanDiv);
+            });
+        }
+        
+        productDiv.appendChild(eanContainer);
+        container.appendChild(productDiv);
+    });
+    
+    dz.innerHTML = `<div class="flex justify-between items-center mb-4 border-b pb-2"><span class="font-black text-slate-700 text-xs italic">${currentRow}</span><span class="text-[10px] font-bold bg-blue-600 text-white px-2 py-0.5 rounded-full">${items.length} items</span></div>`;
+    dz.appendChild(container);
 }
 
 function openBulkModal() {
