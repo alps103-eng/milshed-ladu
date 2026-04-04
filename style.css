@@ -1,0 +1,15 @@
+.product-card {
+    transition: transform 0.1s;
+    cursor: grab;
+}
+.product-card:active {
+    cursor: grabbing;
+}
+.dragging {
+    opacity: 0.5;
+    transform: scale(0.95);
+}
+#dropZone.drag-over {
+    background-color: #dbeafe;
+    border-color: #3b82f6;
+}
