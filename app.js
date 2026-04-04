@@ -320,6 +320,25 @@ async function syncToCloud(product) {
     try { await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ productId: product['Product ID'], tootekood: product['Tootekood'], nimi: product['Nimi'], location: product['Location'] || "", ean13: JSON.stringify(eans) }) }); } catch (e) {}
 }
 
+function parseServerEANs(value) {
+    if (!value || typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+            const normalized = parsed.map(e => String(e || '').trim()).filter(e => /^[0-9]{8,14}$/.test(e));
+            return normalized.length > 0 ? normalized : null;
+        }
+        if (typeof parsed === 'string' && /^[0-9]{8,14}$/.test(parsed.trim())) {
+            return [parsed.trim()];
+        }
+        return null;
+    } catch (e) {
+        return /^[0-9]{8,14}$/.test(trimmed) ? [trimmed] : null;
+    }
+}
+
 async function pullFromCloud(silent = false) {
     try {
         const res = await fetch(GOOGLE_SCRIPT_URL);
@@ -328,28 +347,20 @@ async function pullFromCloud(silent = false) {
         for (let i = 1; i < data.length; i++) {
             const idx = products.findIndex(p => String(p['Product ID']) === String(data[i][0]));
             if (idx !== -1) {
-                // Update location
+                // Update location only
                 if ((products[idx].Location || "").trim() !== (data[i][3] || "").trim()) {
                     products[idx].Location = (data[i][3] || "").trim();
                     changed = true;
                 }
-                // Update EAN13 if server has newer data
-                if (data[i][4]) {
-                    try {
-                        const serverEans = JSON.parse(data[i][4]);
-                        const localEans = Array.isArray(products[idx]['EAN13']) ? products[idx]['EAN13'] : (products[idx]['EAN13'] ? [products[idx]['EAN13']] : []);
-                        if (JSON.stringify(serverEans.sort()) !== JSON.stringify(localEans.sort())) {
-                            products[idx]['EAN13'] = serverEans;
-                            changed = true;
-                        }
-                    } catch (e) {
-                        // If JSON parsing fails, treat as single EAN
-                        const serverEan = data[i][4];
-                        const localEans = Array.isArray(products[idx]['EAN13']) ? products[idx]['EAN13'] : (products[idx]['EAN13'] ? [products[idx]['EAN13']] : []);
-                        if (localEans.length !== 1 || localEans[0] !== serverEan) {
-                            products[idx]['EAN13'] = [serverEan];
-                            changed = true;
-                        }
+                // Update EAN13 only when server provides a valid EAN value/array
+                const serverEans = parseServerEANs(data[i][4]);
+                if (serverEans) {
+                    const localEans = Array.isArray(products[idx]['EAN13']) ? products[idx]['EAN13'] : (products[idx]['EAN13'] ? [products[idx]['EAN13']] : []);
+                    const sortedServer = [...serverEans].sort();
+                    const sortedLocal = [...localEans].sort();
+                    if (JSON.stringify(sortedServer) !== JSON.stringify(sortedLocal)) {
+                        products[idx]['EAN13'] = serverEans;
+                        changed = true;
                     }
                 }
             }
